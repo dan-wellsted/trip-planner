@@ -2,17 +2,48 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.PORT || 4000;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+const TOKEN_COOKIE = 'jp_token';
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(morgan('dev'));
+app.use(cookieParser());
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+const signToken = (userId) => jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: '7d' });
+
+const authMiddleware = (req, _res, next) => {
+  const header = req.headers.authorization;
+  let token = null;
+  if (header && header.startsWith('Bearer ')) {
+    token = header.replace('Bearer ', '');
+  } else if (req.cookies?.[TOKEN_COOKIE]) {
+    token = req.cookies[TOKEN_COOKIE];
+  }
+  if (token) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET);
+      if (payload?.sub) {
+        req.userId = Number(payload.sub);
+      }
+    } catch (err) {
+      // ignore invalid token
+    }
+  }
+  next();
+};
+
+app.use(authMiddleware);
 
 async function ensureTripDays(trip) {
   if (!trip?.startDate || !trip?.endDate) return;
@@ -38,37 +69,205 @@ async function ensureTripDays(trip) {
   }
 }
 
+const tripInclude = {
+  cities: { orderBy: { position: 'asc' } },
+  days: {
+    orderBy: { date: 'asc' },
+    include: { activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } }, city: true },
+  },
+  checklist: true,
+  expenses: true,
+  media: true,
+  ideas: true,
+  bookings: true,
+  memberships: { include: { user: { select: { id: true, email: true, name: true } } } },
+};
+
+const parseTripCities = (trip) => ({
+  ...trip,
+  days: trip.days.map((day) => ({
+    ...day,
+    cityIds: day.cityIdsJson ? JSON.parse(day.cityIdsJson) : (day.cityId ? [day.cityId] : []),
+  })),
+});
+
+async function getUserRoleForTrip(tripId, userId) {
+  if (!userId) return null;
+  const trip = await prisma.trip.findFirst({
+    where: {
+      id: tripId,
+      OR: [{ ownerId: userId }, { memberships: { some: { userId } } }],
+    },
+    select: { ownerId: true, memberships: { where: { userId }, select: { role: true } } },
+  });
+  if (!trip) return null;
+  if (trip.ownerId === userId) return 'owner';
+  return trip.memberships[0]?.role || null;
+}
+
+async function assertTripEditor(res, tripId, userId) {
+  const role = await getUserRoleForTrip(tripId, userId);
+  if (!role) {
+    res.status(403).json({ error: 'no access to this trip' });
+    return false;
+  }
+  if (role === 'viewer') {
+    res.status(403).json({ error: 'view-only access' });
+    return false;
+  }
+  return true;
+}
+
+async function assertTripEditorByDayId(res, dayId, userId) {
+  const day = await prisma.day.findUnique({ where: { id: dayId }, select: { tripId: true } });
+  if (!day) {
+    res.status(404).json({ error: 'Day not found' });
+    return false;
+  }
+  return assertTripEditor(res, day.tripId, userId);
+}
+
+async function assertTripEditorByActivityId(res, activityId, userId) {
+  const act = await prisma.activity.findUnique({ where: { id: activityId }, select: { day: { select: { tripId: true } } } });
+  if (!act?.day) {
+    res.status(404).json({ error: 'Activity not found' });
+    return false;
+  }
+  return assertTripEditor(res, act.day.tripId, userId);
+}
+
+async function assertTripEditorByBookingId(res, bookingId, userId) {
+  const booking = await prisma.booking.findUnique({ where: { id: bookingId }, select: { tripId: true } });
+  if (!booking) {
+    res.status(404).json({ error: 'Booking not found' });
+    return false;
+  }
+  return assertTripEditor(res, booking.tripId, userId);
+}
+
+async function assertTripEditorByIdeaId(res, ideaId, userId) {
+  const idea = await prisma.idea.findUnique({ where: { id: ideaId }, select: { tripId: true } });
+  if (!idea) {
+    res.status(404).json({ error: 'Idea not found' });
+    return false;
+  }
+  return assertTripEditor(res, idea.tripId, userId);
+}
+
+async function assertTripEditorByPlaceId(res, placeId, userId) {
+  const place = await prisma.place.findUnique({ where: { id: placeId }, select: { tripId: true } });
+  if (!place) {
+    res.status(404).json({ error: 'Place not found' });
+    return false;
+  }
+  return assertTripEditor(res, place.tripId, userId);
+}
+
+async function assertTripEditorByCityId(res, cityId, userId) {
+  const city = await prisma.city.findUnique({ where: { id: cityId }, select: { tripId: true } });
+  if (!city) {
+    res.status(404).json({ error: 'City not found' });
+    return false;
+  }
+  return assertTripEditor(res, city.tripId, userId);
+}
+
+async function assertTripEditorByChecklistId(res, checklistId, userId) {
+  const item = await prisma.checklistItem.findUnique({ where: { id: checklistId }, select: { tripId: true } });
+  if (!item) {
+    res.status(404).json({ error: 'Checklist item not found' });
+    return false;
+  }
+  return assertTripEditor(res, item.tripId, userId);
+}
+
+async function assertTripEditorByExpenseId(res, expenseId, userId) {
+  const exp = await prisma.expense.findUnique({ where: { id: expenseId }, select: { tripId: true } });
+  if (!exp) {
+    res.status(404).json({ error: 'Expense not found' });
+    return false;
+  }
+  return assertTripEditor(res, exp.tripId, userId);
+}
+
+app.post('/auth/register', asyncHandler(async (req, res) => {
+  const { email, password, name } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    return res.status(409).json({ error: 'email already registered' });
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
+  const user = await prisma.user.create({
+    data: { email, passwordHash, name: name || null },
+    select: { id: true, email: true, name: true, createdAt: true },
+  });
+  const token = signToken(user.id);
+  res
+    .cookie(TOKEN_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: false })
+    .status(201)
+    .json(user);
+}));
+
+app.post('/auth/login', asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return res.status(401).json({ error: 'invalid credentials' });
+  }
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) {
+    return res.status(401).json({ error: 'invalid credentials' });
+  }
+  const token = signToken(user.id);
+  res
+    .cookie(TOKEN_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: false })
+    .json({ id: user.id, email: user.email, name: user.name, createdAt: user.createdAt });
+}));
+
+app.post('/auth/logout', asyncHandler(async (_req, res) => {
+  res.clearCookie(TOKEN_COOKIE).status(204).end();
+}));
+
+app.get('/auth/me', asyncHandler(async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: 'not authenticated' });
+  const user = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: { id: true, email: true, name: true, createdAt: true },
+  });
+  if (!user) return res.status(401).json({ error: 'not authenticated' });
+  res.json(user);
+}));
+
 app.get('/health', asyncHandler(async (_req, res) => {
   const tripCount = await prisma.trip.count();
   res.json({ status: 'ok', trips: tripCount });
 }));
 
-app.get('/trips', asyncHandler(async (_req, res) => {
+app.get('/trips', asyncHandler(async (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const where = req.userId
+    ? {
+        OR: [
+          { ownerId: req.userId },
+          { memberships: { some: { userId: req.userId } } },
+        ],
+      }
+    : undefined;
   const trips = await prisma.trip.findMany({
+    where,
     orderBy: { createdAt: 'desc' },
-    include: {
-      cities: { orderBy: { position: 'asc' } },
-      days: {
-        orderBy: { date: 'asc' },
-        include: { activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } }, city: true },
-      },
-      checklist: true,
-      expenses: true,
-      media: true,
-      ideas: true,
-      bookings: true,
-    },
+    include: tripInclude,
   });
   await Promise.all(trips.map((trip) => ensureTripDays(trip)));
-  const withParsedCities = trips.map((trip) => ({
-    ...trip,
-    days: trip.days.map((day) => ({
-      ...day,
-      cityIds: day.cityIdsJson ? JSON.parse(day.cityIdsJson) : (day.cityId ? [day.cityId] : []),
-    })),
-  }));
-
-  res.json(withParsedCities);
+  res.json(trips.map(parseTripCities));
 }));
 
 app.post('/trips', asyncHandler(async (req, res) => {
@@ -83,31 +282,32 @@ app.post('/trips', asyncHandler(async (req, res) => {
       startDate: startDate ? new Date(startDate) : null,
       endDate: endDate ? new Date(endDate) : null,
       homeTimeZone: homeTimeZone || null,
+      ownerId: req.userId || null,
+      memberships: req.userId ? { create: { userId: req.userId, role: 'owner' } } : undefined,
     },
+    include: tripInclude,
   });
 
-  res.status(201).json(trip);
+  res.status(201).json(parseTripCities(trip));
 }));
 
 app.get('/trips/:id', asyncHandler(async (req, res) => {
   const tripId = Number(req.params.id);
-  const trip = await prisma.trip.findUnique({
-    where: { id: tripId },
-    include: {
-      cities: { orderBy: { position: 'asc' } },
-      days: {
-        orderBy: { date: 'asc' },
-        include: {
-          activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } },
-          city: true,
-        },
-      },
-      checklist: true,
-      expenses: true,
-      media: true,
-      ideas: true,
-      bookings: true,
-    },
+  if (!req.userId) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const accessFilter = req.userId
+    ? {
+        id: tripId,
+        OR: [
+          { ownerId: req.userId },
+          { memberships: { some: { userId: req.userId } } },
+        ],
+      }
+    : { id: tripId };
+  const trip = await prisma.trip.findFirst({
+    where: accessFilter,
+    include: tripInclude,
   });
 
   if (!trip) {
@@ -116,36 +316,45 @@ app.get('/trips/:id', asyncHandler(async (req, res) => {
 
   await ensureTripDays(trip);
 
-  const refreshed = await prisma.trip.findUnique({
-    where: { id: tripId },
-    include: {
-      cities: { orderBy: { position: 'asc' } },
-      days: {
-        orderBy: { date: 'asc' },
-        include: {
-          activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } },
-          city: true,
-        },
-      },
-      checklist: true,
-      expenses: true,
-      media: true,
-      ideas: true,
-      bookings: true,
-    },
+  const refreshed = await prisma.trip.findFirst({
+    where: accessFilter,
+    include: tripInclude,
   });
 
-  const parsed = refreshed
-    ? {
-        ...refreshed,
-        days: refreshed.days.map((day) => ({
-          ...day,
-          cityIds: day.cityIdsJson ? JSON.parse(day.cityIdsJson) : (day.cityId ? [day.cityId] : []),
-        })),
-      }
-    : null;
+  res.json(refreshed ? parseTripCities(refreshed) : null);
+}));
 
-  res.json(parsed);
+app.get('/trips/:id/memberships', asyncHandler(async (req, res) => {
+  const tripId = Number(req.params.id);
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
+  const memberships = await prisma.tripMembership.findMany({
+    where: { tripId },
+    include: { user: { select: { id: true, email: true, name: true } } },
+    orderBy: { id: 'asc' },
+  });
+  res.json(memberships);
+}));
+
+app.post('/trips/:id/memberships', asyncHandler(async (req, res) => {
+  const tripId = Number(req.params.id);
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
+  const { email, role } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'email is required' });
+  }
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return res.status(404).json({ error: 'user not found' });
+  }
+  const roleToUse = role || 'viewer';
+  const membership = await prisma.tripMembership.upsert({
+    where: { tripId_userId: { tripId, userId: user.id } },
+    update: { role: roleToUse },
+    create: { tripId, userId: user.id, role: roleToUse },
+  });
+  res.status(201).json(membership);
 }));
 
 app.post('/trips/:id/days', asyncHandler(async (req, res) => {
@@ -154,6 +363,8 @@ app.post('/trips/:id/days', asyncHandler(async (req, res) => {
   if (!date) {
     return res.status(400).json({ error: 'date is required (ISO string)' });
   }
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
 
   const cityIdsArray = Array.isArray(cityIds) ? cityIds.map((c) => Number(c)).filter((c) => !Number.isNaN(c)) : [];
   const primaryCityId = cityId || cityIdsArray[0] || null;
@@ -178,6 +389,8 @@ app.post('/trips/:id/days', asyncHandler(async (req, res) => {
 app.patch('/days/:id', asyncHandler(async (req, res) => {
   const dayId = Number(req.params.id);
   const { title, note, cityId, cityIds } = req.body;
+  const accessOk = await assertTripEditorByDayId(res, dayId, req.userId);
+  if (!accessOk) return;
   const cityIdsArray = Array.isArray(cityIds) ? cityIds.map((c) => Number(c)).filter((c) => !Number.isNaN(c)) : null;
   const updated = await prisma.day.update({
     where: { id: dayId },
@@ -200,6 +413,8 @@ app.post('/days/:id/activities', asyncHandler(async (req, res) => {
   if (!title) {
     return res.status(400).json({ error: 'title is required' });
   }
+   const accessOk = await assertTripEditorByDayId(res, dayId, req.userId);
+   if (!accessOk) return;
 
   let cityIdToUse = cityId || null;
   if (!cityIdToUse) {
@@ -235,6 +450,8 @@ app.patch('/activities/:id', asyncHandler(async (req, res) => {
   if (!existing) {
     return res.status(404).json({ error: 'Activity not found' });
   }
+  const accessOk = await assertTripEditorByActivityId(res, activityId, req.userId);
+  if (!accessOk) return;
 
   const { title, description, startTime, endTime, location, category, cityId } = req.body;
   const updated = await prisma.activity.update({
@@ -256,6 +473,8 @@ app.patch('/activities/:id', asyncHandler(async (req, res) => {
 
 app.delete('/activities/:id', asyncHandler(async (req, res) => {
   const activityId = Number(req.params.id);
+  const accessOk = await assertTripEditorByActivityId(res, activityId, req.userId);
+  if (!accessOk) return;
   await prisma.activity.delete({ where: { id: activityId } });
   res.status(204).end();
 }));
@@ -266,6 +485,8 @@ app.post('/days/:id/activities/reorder', asyncHandler(async (req, res) => {
   if (!Array.isArray(order)) {
     return res.status(400).json({ error: 'order must be an array of activity IDs' });
   }
+  const accessOk = await assertTripEditorByDayId(res, dayId, req.userId);
+  if (!accessOk) return;
   await prisma.$transaction(
     order.map((id, idx) =>
       prisma.activity.update({
@@ -288,6 +509,8 @@ app.post('/trips/:id/checklist', asyncHandler(async (req, res) => {
   if (!title) {
     return res.status(400).json({ error: 'title is required' });
   }
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
 
   const item = await prisma.checklistItem.create({
     data: { title, category: category || null, tripId },
@@ -302,6 +525,8 @@ app.patch('/checklist/:id/toggle', asyncHandler(async (req, res) => {
   if (!existing) {
     return res.status(404).json({ error: 'Checklist item not found' });
   }
+  const accessOk = await assertTripEditor(res, existing.tripId, req.userId);
+  if (!accessOk) return;
 
   const updated = await prisma.checklistItem.update({
     where: { id: itemId },
@@ -317,6 +542,8 @@ app.post('/trips/:id/expenses', asyncHandler(async (req, res) => {
   if (amount === undefined || amount === null) {
     return res.status(400).json({ error: 'amount is required' });
   }
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
 
   const expense = await prisma.expense.create({
     data: {
@@ -367,6 +594,8 @@ app.post('/trips/:id/bookings', asyncHandler(async (req, res) => {
   if (!title) {
     return res.status(400).json({ error: 'title is required' });
   }
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
 
   const booking = await prisma.booking.create({
     data: {
@@ -387,6 +616,8 @@ app.post('/trips/:id/bookings', asyncHandler(async (req, res) => {
 
 app.delete('/bookings/:id', asyncHandler(async (req, res) => {
   const bookingId = Number(req.params.id);
+  const accessOk = await assertTripEditorByBookingId(res, bookingId, req.userId);
+  if (!accessOk) return;
   await prisma.booking.delete({ where: { id: bookingId } });
   res.status(204).end();
 }));
@@ -407,6 +638,8 @@ app.post('/trips/:id/cities', asyncHandler(async (req, res) => {
   if (!name) {
     return res.status(400).json({ error: 'name is required' });
   }
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
 
   const maxPosition = await prisma.city.aggregate({
     where: { tripId },
@@ -432,6 +665,8 @@ app.post('/trips/:id/cities', asyncHandler(async (req, res) => {
 app.patch('/cities/:id', asyncHandler(async (req, res) => {
   const cityId = Number(req.params.id);
   const { name, country, startDate, endDate, notes, position, timeZone } = req.body;
+  const accessOk = await assertTripEditorByCityId(res, cityId, req.userId);
+  if (!accessOk) return;
   const city = await prisma.city.update({
     where: { id: cityId },
     data: {
@@ -453,6 +688,8 @@ app.post('/trips/:id/cities/reorder', asyncHandler(async (req, res) => {
   if (!Array.isArray(order)) {
     return res.status(400).json({ error: 'order must be an array of city IDs' });
   }
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
   await prisma.$transaction(
     order.map((id, idx) =>
       prisma.city.update({
@@ -467,6 +704,8 @@ app.post('/trips/:id/cities/reorder', asyncHandler(async (req, res) => {
 
 app.delete('/cities/:id', asyncHandler(async (req, res) => {
   const cityId = Number(req.params.id);
+  const accessOk = await assertTripEditorByCityId(res, cityId, req.userId);
+  if (!accessOk) return;
   await prisma.city.delete({ where: { id: cityId } });
   res.status(204).end();
 }));
@@ -490,6 +729,8 @@ app.post('/trips/:id/places', asyncHandler(async (req, res) => {
   if (!cityId) {
     return res.status(400).json({ error: 'cityId is required' });
   }
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
 
   const place = await prisma.place.create({
     data: {
@@ -511,6 +752,8 @@ app.post('/trips/:id/places', asyncHandler(async (req, res) => {
 app.patch('/places/:id', asyncHandler(async (req, res) => {
   const placeId = Number(req.params.id);
   const { name, address, lat, lng, tag, link, notes, cityId } = req.body;
+  const accessOk = await assertTripEditorByPlaceId(res, placeId, req.userId);
+  if (!accessOk) return;
   const place = await prisma.place.update({
     where: { id: placeId },
     data: {
@@ -530,6 +773,8 @@ app.patch('/places/:id', asyncHandler(async (req, res) => {
 app.delete('/places/:id', asyncHandler(async (req, res) => {
   const placeId = Number(req.params.id);
   try {
+    const accessOk = await assertTripEditorByPlaceId(res, placeId, req.userId);
+    if (!accessOk) return;
     await prisma.place.delete({ where: { id: placeId } });
     res.status(204).end();
   } catch (err) {
@@ -546,6 +791,8 @@ app.post('/places/:id/promote', asyncHandler(async (req, res) => {
   if (!dayId) {
     return res.status(400).json({ error: 'dayId is required to promote' });
   }
+  const accessOk = await assertTripEditorByPlaceId(res, placeId, req.userId);
+  if (!accessOk) return;
 
   const place = await prisma.place.findUnique({ where: { id: placeId } });
   if (!place) {
@@ -590,6 +837,8 @@ app.post('/trips/:id/ideas', asyncHandler(async (req, res) => {
   if (!title) {
     return res.status(400).json({ error: 'title is required' });
   }
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
 
   const maxPosition = await prisma.idea.aggregate({
     where: { tripId },
@@ -614,6 +863,8 @@ app.post('/trips/:id/ideas', asyncHandler(async (req, res) => {
 app.patch('/ideas/:id', asyncHandler(async (req, res) => {
   const ideaId = Number(req.params.id);
   const { title, link, note, status, category, cityId } = req.body;
+  const accessOk = await assertTripEditorByIdeaId(res, ideaId, req.userId);
+  if (!accessOk) return;
   const idea = await prisma.idea.update({
     where: { id: ideaId },
     data: {
@@ -634,6 +885,8 @@ app.post('/ideas/:id/promote', asyncHandler(async (req, res) => {
   if (!dayId) {
     return res.status(400).json({ error: 'dayId is required to promote' });
   }
+  const accessOk = await assertTripEditorByIdeaId(res, ideaId, req.userId);
+  if (!accessOk) return;
 
   const idea = await prisma.idea.findUnique({ where: { id: ideaId } });
   if (!idea) {
@@ -662,6 +915,8 @@ app.post('/ideas/:id/promote', asyncHandler(async (req, res) => {
 app.delete('/ideas/:id', asyncHandler(async (req, res) => {
   const ideaId = Number(req.params.id);
   try {
+    const accessOk = await assertTripEditorByIdeaId(res, ideaId, req.userId);
+    if (!accessOk) return;
     await prisma.idea.delete({ where: { id: ideaId } });
     res.status(204).end();
   } catch (err) {
@@ -678,6 +933,8 @@ app.post('/trips/:id/ideas/reorder', asyncHandler(async (req, res) => {
   if (!Array.isArray(order)) {
     return res.status(400).json({ error: 'order must be an array of idea IDs' });
   }
+  const accessOk = await assertTripEditor(res, tripId, req.userId);
+  if (!accessOk) return;
 
   await prisma.$transaction(
     order.map((id, idx) =>
@@ -703,6 +960,22 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Unexpected error', detail: err.message });
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`);
 });
+
+const shutdown = async (signal) => {
+  console.log(`\nReceived ${signal}, shutting down gracefully...`);
+  server.close(async () => {
+    try {
+      await prisma.$disconnect();
+    } catch (e) {
+      console.error('Error disconnecting Prisma', e);
+    } finally {
+      process.exit(0);
+    }
+  });
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
