@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Trip {
+  id           Int       @id @default(autoincrement())
+  name         String
+  startDate    DateTime?
+  endDate      DateTime?
+  homeTimeZone String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  cities    City[]
+  days      Day[]
+  expenses  Expense[]
+  media     Media[]
+  checklist ChecklistItem[]
+  bookings  Booking[]
+  ideas     Idea[]
+  places    Place[]
+}
+
+model City {
+  id        Int       @id @default(autoincrement())
+  name      String
+  country   String?
+  startDate DateTime?
+  endDate   DateTime?
+  notes     String?
+  timeZone  String?
+  position  Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  trip   Trip @relation(fields: [tripId], references: [id])
+  tripId Int
+
+  days       Day[]
+  bookings   Booking[]
+  ideas      Idea[]
+  activities Activity[]
+  places     Place[]
+}
+
+model Day {
+  id        Int      @id @default(autoincrement())
+  date      DateTime
+  title     String?
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trip   Trip @relation(fields: [tripId], references: [id])
+  tripId Int
+
+  city   City? @relation(fields: [cityId], references: [id])
+  cityId Int?
+
+  activities Activity[]
+  bookings   Booking[]
+}
+
+model Activity {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  startTime   DateTime?
+  endTime     DateTime?
+  location    String?
+  category    String?
+  placeId     Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  day   Day @relation(fields: [dayId], references: [id])
+  dayId Int
+
+  city   City @relation(fields: [cityId], references: [id])
+  cityId Int
+
+  place Place? @relation(fields: [placeId], references: [id])
+}
+
+model ChecklistItem {
+  id        Int      @id @default(autoincrement())
+  title     String
+  done      Boolean  @default(false)
+  category  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trip   Trip @relation(fields: [tripId], references: [id])
+  tripId Int
+}
+
+model Expense {
+  id         Int       @id @default(autoincrement())
+  amount     Decimal   @db.Decimal(10, 2)
+  currency   String    @default("JPY")
+  category   String?
+  note       String?
+  incurredAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  trip   Trip @relation(fields: [tripId], references: [id])
+  tripId Int
+}
+
+model Media {
+  id        Int       @id @default(autoincrement())
+  url       String
+  caption   String?
+  location  String?
+  takenAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  trip   Trip @relation(fields: [tripId], references: [id])
+  tripId Int
+}
+
+model Booking {
+  id               Int       @id @default(autoincrement())
+  title            String
+  type             String?
+  dateTime         DateTime?
+  location         String?
+  confirmationCode String?
+  link             String?
+  note             String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  city   City? @relation(fields: [cityId], references: [id])
+  cityId Int?
+
+  trip   Trip @relation(fields: [tripId], references: [id])
+  tripId Int
+  day    Day? @relation(fields: [dayId], references: [id])
+  dayId  Int?
+}
+
+model Idea {
+  id        Int           @id @default(autoincrement())
+  title     String
+  link      String?
+  note      String?
+  category  IdeaCategory?
+  status    String        @default("open")
+  position  Int           @default(0)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  city   City? @relation(fields: [cityId], references: [id])
+  cityId Int?
+
+  trip   Trip @relation(fields: [tripId], references: [id])
+  tripId Int
+}
+
+model Place {
+  id        Int      @id @default(autoincrement())
+  name      String
+  address   String?
+  lat       Float?
+  lng       Float?
+  tag       String?
+  link      String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  city   City? @relation(fields: [cityId], references: [id])
+  cityId Int?
+
+  trip   Trip @relation(fields: [tripId], references: [id])
+  tripId Int
+
+  activities Activity[]
+}
+
+enum IdeaCategory {
+  food
+  culture
+  shop
+  nature
+  nightlife
+  transport
+  misc
+}

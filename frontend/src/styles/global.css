@@ -1,0 +1,18 @@
+:root {
+  /* keep root height so Chakra can render full background */
+  min-height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0c111b;
+  color: #eaf1ff;
+}
+
+#root {
+  min-height: 100vh;
+}

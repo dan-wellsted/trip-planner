@@ -1,0 +1,17 @@
+# Node
+node_modules
+.npmrc
+npm-debug.log*
+
+# Env
+.env
+backend/.env
+frontend/.env
+
+# Prisma
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+
+# Build
+dist
+.DS_Store

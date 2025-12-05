@@ -1,0 +1,16 @@
+{
+  "name": "japan-trip",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:api dev:client",
+    "dev:api": "npm --prefix backend run dev",
+    "dev:client": "npm --prefix frontend run dev"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}
