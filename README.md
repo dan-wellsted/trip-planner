@@ -1,6 +1,6 @@
-# Japan Trip Companion
+# Trip Companion
 
-Lightweight Node + Prisma API with a React (Vite) frontend to plan and track a Japan trip. Built for quick itinerary glances, checklists, and shared moments.
+Lightweight Node + Prisma API with a React (Vite) frontend to plan and track a trip. Built for quick itinerary glances, checklists, and shared moments.
 
 ## Structure
 - `backend/`: Express API with Prisma + PostgreSQL (dev uses SQLite). Models for trips, days, activities, checklist, expenses, media, ideas, cities, and places.

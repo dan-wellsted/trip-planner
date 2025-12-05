@@ -1149,9 +1149,9 @@ function App() {
       <Container maxW="4xl" py={{ base: 10, md: 16 }}>
         <Stack spacing={6} align="flex-start">
           <Badge colorScheme="brand" px={3} py={1} borderRadius="full">
-            Japan Companion
+            Trip Companion
           </Badge>
-          <Heading size="2xl">Plan Japan together</Heading>
+          <Heading size="2xl">Plan trips together</Heading>
           <Text color="whiteAlpha.800">
             Sign in to access trips, days, places, and ideas. Your data stays scoped to your account.
           </Text>
@@ -1187,7 +1187,7 @@ function App() {
         <Stack spacing={3}>
           <HStack spacing={3}>
             <Badge colorScheme="brand" px={3} py={1} borderRadius="full">
-              Japan Companion
+              Trip Companion
             </Badge>
             <Tag colorScheme={status.includes('Live') ? 'green' : 'purple'} variant="subtle">
               {status}
@@ -1202,7 +1202,7 @@ function App() {
             {trip?.name || 'Your adventure'}
           </Heading>
           <Text color="whiteAlpha.800" maxW="3xl">
-            Keep itinerary, packing, spend, and photo drops in one place. Built for quick train glances and late-night ramen runs.
+            Keep itinerary, packing, spend, and photo drops in one place. Built for quick glances on the move.
           </Text>
           {error && (
             <Text color="red.300" fontSize="sm">
