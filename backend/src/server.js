@@ -960,6 +960,22 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Unexpected error', detail: err.message });
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`);
 });
+
+const shutdown = async (signal) => {
+  console.log(`\nReceived ${signal}, shutting down gracefully...`);
+  server.close(async () => {
+    try {
+      await prisma.$disconnect();
+    } catch (e) {
+      console.error('Error disconnecting Prisma', e);
+    } finally {
+      process.exit(0);
+    }
+  });
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { addDays, differenceInCalendarDays, format } from 'date-fns';
-import { Routes, Route, useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate, Navigate, Link as RouterLink } from 'react-router-dom';
 import {
   Badge,
   Box,
@@ -449,6 +449,9 @@ function App() {
         setPlaces([]);
         setSelectedDayId(null);
         setSelectedDayDate('');
+        if (idParam) {
+          navigate('/');
+        }
       }
     } catch (err) {
       if (err?.status === 401) {
@@ -461,6 +464,9 @@ function App() {
         setPlaces([]);
         setSelectedDayId(null);
         setSelectedDayDate('');
+        if (tripIdFromPath) {
+          navigate('/');
+        }
       } else {
         console.warn('Falling back to demo data', err);
         setStatus('Offline demo data');
@@ -469,6 +475,9 @@ function App() {
         setTrips([]);
         setSelectedDayId(null);
         setSelectedDayDate('');
+        if (tripIdFromPath) {
+          navigate('/');
+        }
       }
     } finally {
       setLoading(false);
@@ -1223,6 +1232,9 @@ function App() {
           </Button>
         );
       })}
+      <Button as={RouterLink} to="/" variant="ghost" px={4} py={2}>
+        Back to trips
+      </Button>
     </ButtonGroup>
   );
 
@@ -1408,6 +1420,7 @@ function App() {
               );
             })}
           </ButtonGroup>
+          <Routes>
           <Routes>
             <Route
               path="/trip/:tripId"
@@ -1973,9 +1986,8 @@ function App() {
                 }}
                 onSaveAsPlace={handleSaveIdeaAsPlace}
               />
-              }
-            />
-            <Route path="*" element={<Box color="white">Not found</Box>} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Box>
       </Stack>
