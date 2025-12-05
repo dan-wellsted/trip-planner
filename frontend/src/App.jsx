@@ -385,6 +385,7 @@ function App() {
   const [placeFavoritesOnly, setPlaceFavoritesOnly] = useState(false);
   const [undoPlace, setUndoPlace] = useState(null);
   const [undoTimer, setUndoTimer] = useState(null);
+  const [quickPlaceAdd, setQuickPlaceAdd] = useState({});
   const toast = useToast();
 
   const loadTrips = async () => {
@@ -817,6 +818,33 @@ function App() {
     }
   };
 
+  const handleQuickAddPlaceToDay = async (day) => {
+    if (!day?.id) return;
+    const entry = quickPlaceAdd[day.id] || {};
+    const placeId = entry.placeId ? Number(entry.placeId) : null;
+    const place = places.find((p) => p.id === placeId);
+    if (!place) {
+      toast({ status: 'warning', title: 'Pick a place to add' });
+      return;
+    }
+    const time = entry.time || '';
+    const dateIso = day.date?.slice(0, 10) || '';
+    const startTime = time && dateIso ? `${dateIso}T${time}` : null;
+    try {
+      await promotePlace(place.id, {
+        dayId: Number(day.id),
+        startTime,
+        location: place.address || place.name,
+        category: place.tag || null,
+      });
+      await loadTrips();
+      setQuickPlaceAdd((prev) => ({ ...prev, [day.id]: { placeId: '', time: '' } }));
+      toast({ status: 'success', title: 'Added place to day' });
+    } catch (err) {
+      toast({ status: 'error', title: 'Failed to add place to day', description: err.message });
+    }
+  };
+
   const togglePlaceFavorite = (placeId) => {
     if (!placeId) return;
     setPlaceFavorites((prev) => {
@@ -1179,6 +1207,57 @@ function App() {
                               </Flex>
                             </HStack>
                           </Flex>
+                          <Stack spacing={2} mb={3}>
+                            <HStack spacing={2} flexWrap="wrap" align="flex-end">
+                              <FormControl minW="220px">
+                                <FormLabel fontSize="sm" color="whiteAlpha.700">
+                                  Add a saved place
+                                </FormLabel>
+                                <Select
+                                  placeholder="Choose place"
+                                  value={quickPlaceAdd[day.id]?.placeId || ''}
+                                  onChange={(e) =>
+                                    setQuickPlaceAdd((prev) => ({
+                                      ...prev,
+                                      [day.id]: { ...(prev[day.id] || {}), placeId: e.target.value },
+                                    }))
+                                  }
+                                >
+                                  {places
+                                    .filter((p) => !day.cityId || p.cityId === day.cityId)
+                                    .map((p) => (
+                                      <option key={`quick-place-${p.id}`} value={p.id}>
+                                        {p.name} {p.city ? `· ${p.city.name}` : ''}
+                                      </option>
+                                    ))}
+                                </Select>
+                              </FormControl>
+                              <FormControl maxW="160px">
+                                <FormLabel fontSize="sm" color="whiteAlpha.700">
+                                  Time (optional)
+                                </FormLabel>
+                                <Input
+                                  type="time"
+                                  value={quickPlaceAdd[day.id]?.time || ''}
+                                  onChange={(e) =>
+                                    setQuickPlaceAdd((prev) => ({
+                                      ...prev,
+                                      [day.id]: { ...(prev[day.id] || {}), time: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </FormControl>
+                              <Button
+                                mt={5}
+                                size="sm"
+                                variant="solid"
+                                onClick={() => handleQuickAddPlaceToDay(day)}
+                                isDisabled={!places || places.length === 0}
+                              >
+                                Add to day
+                              </Button>
+                            </HStack>
+                          </Stack>
                           <ActivitiesList
                             activities={day.activities || []}
                             cities={cities}
