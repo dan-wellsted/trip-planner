@@ -410,7 +410,6 @@ function App() {
       }
     };
 
-    if (!user) return;
     try {
       setLoading(true);
       setError(null);
@@ -1253,54 +1252,6 @@ function App() {
               </CardBody>
             </Card>
           )}
-          <Box bg="whiteAlpha.100" p={3} borderRadius="12px" border="1px solid rgba(255,255,255,0.08)">
-            {user ? (
-              <HStack justify="space-between" align="center">
-                <HStack>
-                  <Tag colorScheme="green" variant="subtle">
-                    {user.email}
-                  </Tag>
-                  <Text color="whiteAlpha.700" fontSize="sm">
-                    Signed in
-                  </Text>
-                </HStack>
-                <Button size="sm" onClick={handleLogout}>
-                  Logout
-                </Button>
-              </HStack>
-            ) : (
-              <Stack direction={{ base: 'column', md: 'row' }} spacing={3}>
-                <Input
-                  placeholder="Email"
-                  value={authForm.email}
-                  onChange={(e) => setAuthForm((f) => ({ ...f, email: e.target.value }))}
-                />
-                <Input
-                  type="password"
-                  placeholder="Password"
-                  value={authForm.password}
-                  onChange={(e) => setAuthForm((f) => ({ ...f, password: e.target.value }))}
-                />
-                {authForm.mode === 'register' && (
-                  <Input
-                    placeholder="Name (optional)"
-                    value={authForm.name}
-                    onChange={(e) => setAuthForm((f) => ({ ...f, name: e.target.value }))}
-                  />
-                )}
-                <Button size="sm" onClick={handleAuthSubmit}>
-                  {authForm.mode === 'register' ? 'Register' : 'Login'}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setAuthForm((f) => ({ ...f, mode: f.mode === 'register' ? 'login' : 'register' }))}
-                >
-                  Switch to {authForm.mode === 'register' ? 'Login' : 'Register'}
-                </Button>
-              </Stack>
-            )}
-          </Box>
           <HStack spacing={2} wrap="wrap">
             <Button
               size="sm"
