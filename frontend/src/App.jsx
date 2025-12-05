@@ -328,6 +328,7 @@ function parsePlaceLink(raw) {
 function App() {
   const location = useLocation();
   const [trip, setTrip] = useState(fallbackTrip);
+  const [trips, setTrips] = useState([]);
   const [user, setUser] = useState(null);
   const [status, setStatus] = useState('Offline demo data');
   const [loading, setLoading] = useState(false);
@@ -412,9 +413,10 @@ function App() {
     try {
       setLoading(true);
       setError(null);
-      const trips = await fetchTripsApi();
-      if (Array.isArray(trips) && trips.length > 0) {
-        const firstTrip = trips[0];
+      const tripsResp = await fetchTripsApi();
+      setTrips(Array.isArray(tripsResp) ? tripsResp : []);
+      if (Array.isArray(tripsResp) && tripsResp.length > 0) {
+        const firstTrip = trip && tripsResp.find((t) => t.id === trip.id) ? trip : tripsResp[0];
         setTrip(firstTrip);
         setCities(firstTrip.cities || []);
         setSelectedDayId(firstTrip.days?.[0]?.id || null);
@@ -600,12 +602,17 @@ function App() {
       return;
     }
     try {
-      await createTrip({
+      const created = await createTrip({
         name: tripForm.name,
         startDate: tripForm.startDate || null,
         endDate: tripForm.endDate || null,
       });
       await loadTrips();
+      if (created?.id) {
+        const match = (trips || []).find((t) => t.id === created.id);
+        const nextTrip = match || created;
+        setTrip(nextTrip);
+      }
       tripModal.onClose();
       setTripForm({ name: '', startDate: '', endDate: '' });
       toast({ status: 'success', title: 'Trip created' });
@@ -1127,6 +1134,43 @@ function App() {
     }
   };
 
+  if (!user && status.includes('Login')) {
+    return (
+      <Container maxW="4xl" py={{ base: 10, md: 16 }}>
+        <Stack spacing={6} align="flex-start">
+          <Badge colorScheme="brand" px={3} py={1} borderRadius="full">
+            Japan Companion
+          </Badge>
+          <Heading size="2xl">Plan Japan together</Heading>
+          <Text color="whiteAlpha.800">
+            Sign in to access trips, days, places, and ideas. Your data stays scoped to your account.
+          </Text>
+          <Stack direction={{ base: 'column', md: 'row' }} spacing={3} w="100%">
+            <Input
+              placeholder="Email"
+              value={authForm.email}
+              onChange={(e) => setAuthForm((f) => ({ ...f, email: e.target.value }))}
+            />
+            <Input
+              type="password"
+              placeholder="Password"
+              value={authForm.password}
+              onChange={(e) => setAuthForm((f) => ({ ...f, password: e.target.value }))}
+            />
+            <Input
+              placeholder="Name (optional)"
+              value={authForm.name}
+              onChange={(e) => setAuthForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </Stack>
+          <HStack spacing={3}>
+            <Button onClick={handleAuthSubmit}>Login / Register</Button>
+          </HStack>
+        </Stack>
+      </Container>
+    );
+  }
+
   return (
     <Container maxW="6xl" py={{ base: 8, md: 12 }}>
       <Stack spacing={6}>
@@ -1159,6 +1203,43 @@ function App() {
             <Text color="whiteAlpha.700" fontSize="sm">
               Loading live data…
             </Text>
+          )}
+          {trips.length > 0 && (
+            <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)" mt={2}>
+              <CardHeader pb={2}>
+                <Heading size="sm" color="white">
+                  My trips
+                </Heading>
+                <Text color="whiteAlpha.700" fontSize="sm">
+                  Select a trip to view its planner.
+                </Text>
+              </CardHeader>
+              <CardBody>
+                <Stack spacing={2}>
+                  {trips.map((t) => (
+                    <Flex key={`trip-${t.id}`} align="center" justify="space-between" p={3} borderRadius="12px" bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.08)">
+                      <Box>
+                        <Text fontWeight="semibold">{t.name}</Text>
+                        <Text color="whiteAlpha.700" fontSize="sm">
+                          {t.startDate ? format(new Date(t.startDate), 'MMM d') : 'No dates'} {t.endDate ? `– ${format(new Date(t.endDate), 'MMM d')}` : ''}
+                        </Text>
+                      </Box>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setTrip(t);
+                          setCities(t.cities || []);
+                          setSelectedDayId(t.days?.[0]?.id || null);
+                          setSelectedDayDate(t.days?.[0]?.date || t.startDate || '');
+                        }}
+                      >
+                        Open
+                      </Button>
+                    </Flex>
+                  ))}
+                </Stack>
+              </CardBody>
+            </Card>
           )}
           <Box bg="whiteAlpha.100" p={3} borderRadius="12px" border="1px solid rgba(255,255,255,0.08)">
             {user ? (
