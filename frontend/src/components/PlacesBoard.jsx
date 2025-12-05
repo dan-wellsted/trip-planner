@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -19,6 +19,7 @@ import {
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import Supercluster from 'supercluster';
 
 const markerIcon = new L.Icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -64,7 +65,7 @@ const PlaceCard = ({ place, cityLabel, onPromote, onEdit, onDelete, onToggleFavo
           <StarIcon filled={isFavorite} />
         </Button>
         {place.tag && (
-          <Tag size="sm" colorScheme="brand" variant="subtle">
+          <Tag size="sm" colorScheme="brand" variant="solid" color="white">
             {place.tag}
           </Tag>
         )}
@@ -170,8 +171,12 @@ const PlacesBoard = ({
   onEdit,
   onDelete,
   onSaveFromLink,
+  dayOptions = [],
+  onQuickPromote,
 }) => {
   const [linkInput, setLinkInput] = useState('');
+  const [map, setMap] = useState(null);
+  const [clusters, setClusters] = useState([]);
   const uniqueTags = useMemo(() => Array.from(new Set((places || []).map((p) => p.tag).filter(Boolean))), [places]);
 
   const filtered = useMemo(() => {
@@ -201,6 +206,42 @@ const PlacesBoard = ({
       !Number.isNaN(Number(p.lat)) &&
       !Number.isNaN(Number(p.lng))
   );
+  const points = useMemo(
+    () =>
+      placesWithCoords.map((p) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [Number(p.lng), Number(p.lat)] },
+        properties: { cluster: false, placeId: p.id },
+      })),
+    [placesWithCoords]
+  );
+  const clusterIndex = useMemo(() => {
+    const index = new Supercluster({ radius: 70, maxZoom: 18 });
+    index.load(points);
+    return index;
+  }, [points]);
+  useEffect(() => {
+    const globalClusters = clusterIndex.getClusters([-180, -85, 180, 85], 3);
+    setClusters(globalClusters);
+  }, [clusterIndex]);
+
+  useEffect(() => {
+    if (!map) return undefined;
+    const update = () => {
+      const bounds = map.getBounds();
+      const zoom = map.getZoom();
+      const clustersForView = clusterIndex.getClusters(
+        [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+        Math.round(zoom)
+      );
+      setClusters(clustersForView);
+    };
+    update();
+    map.on('moveend', update);
+    return () => {
+      map.off('moveend', update);
+    };
+  }, [map, clusterIndex]);
   const defaultCenter = placesWithCoords.length
     ? [Number(placesWithCoords[0].lat), Number(placesWithCoords[0].lng)]
     : [35.6762, 139.6503];
@@ -385,23 +426,48 @@ const PlacesBoard = ({
               style={{ height: '420px', width: '100%' }}
               scrollWheelZoom
               preferCanvas
+              whenCreated={setMap}
             >
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> | Tiles &copy; <a href="https://carto.com/attributions">CARTO</a>'
                 url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
               />
-              {sorted.map((place) => {
-                const lat = place.lat ?? place.latitude;
-                const lng = place.lng ?? place.longitude;
-                if (lat === null || lat === undefined || lng === null || lng === undefined) return null;
+              {(clusters.length ? clusters : placesWithCoords.map((p) => ({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [Number(p.lng), Number(p.lat)] },
+                properties: { cluster: false, placeId: p.id },
+              }))).map((feature) => {
+                const [lng, lat] = feature.geometry.coordinates;
+                const { cluster: isCluster, point_count: pointCount, cluster_id: clusterId } = feature.properties;
+                if (isCluster) {
+                  const size = Math.min(40, 24 + pointCount * 0.5);
+                  return (
+                    <Marker
+                      key={`cluster-${clusterId}`}
+                      position={[lat, lng]}
+                      icon={L.divIcon({
+                        html: `<div style="background: rgba(90,115,255,0.9); color: white; border-radius: 999px; width: ${size}px; height: ${size}px; display: flex; align-items: center; justify-content: center; font-weight: 700;">${pointCount}</div>`,
+                        className: '',
+                      })}
+                      eventHandlers={{
+                        click: () => {
+                          const expansionZoom = Math.min(clusterIndex.getClusterExpansionZoom(clusterId), 18);
+                          map.flyTo([lat, lng], expansionZoom);
+                        },
+                      }}
+                    />
+                  );
+                }
+                const place = placesWithCoords.find((p) => p.id === feature.properties.placeId);
+                if (!place) return null;
                 return (
-                  <Marker key={place.id} position={[Number(lat), Number(lng)]} icon={markerIcon}>
+                  <Marker key={place.id} position={[Number(place.lat), Number(place.lng)]} icon={markerIcon}>
                     <Popup>
-                      <VStack align="stretch" spacing={1}>
+                      <VStack align="stretch" spacing={2}>
                         <Text fontWeight="bold">{place.name}</Text>
                         {place.address && <Text fontSize="sm">{place.address}</Text>}
                         {place.tag && (
-                          <Tag size="sm" colorScheme="brand" variant="subtle" w="fit-content">
+                          <Tag size="sm" colorScheme="brand" variant="solid" w="fit-content" color="white">
                             {place.tag}
                           </Tag>
                         )}
@@ -416,6 +482,26 @@ const PlacesBoard = ({
                             <StarIcon filled={favorites.includes(place.id)} />
                           </Button>
                         </HStack>
+                        {dayOptions.length > 0 && onQuickPromote && (
+                          <HStack>
+                            <Select
+                              size="sm"
+                              placeholder="Select day"
+                              bg="white"
+                              color="black"
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val) onQuickPromote(place, Number(val));
+                              }}
+                            >
+                              {dayOptions.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.label}
+                                </option>
+                              ))}
+                            </Select>
+                          </HStack>
+                        )}
                       </VStack>
                     </Popup>
                   </Marker>
