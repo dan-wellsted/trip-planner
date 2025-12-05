@@ -565,6 +565,7 @@ function App() {
   };
 
   const handleAddMember = async () => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -1192,6 +1193,9 @@ function App() {
   };
 
   if (!user && status.includes('Login')) {
+    if (location.pathname !== '/login') {
+      return <Navigate to="/login" replace />;
+    }
     return (
       <Container maxW="4xl" py={{ base: 10, md: 16 }}>
         <Stack spacing={6} align="flex-start">
@@ -1300,18 +1304,19 @@ function App() {
                           {t.startDate ? format(new Date(t.startDate), 'MMM d') : 'No dates'} {t.endDate ? `– ${format(new Date(t.endDate), 'MMM d')}` : ''}
                         </Text>
                       </Box>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setTrip(t);
-                          setCities(t.cities || []);
-                          setSelectedDayId(t.days?.[0]?.id || null);
-                          setSelectedDayDate(t.days?.[0]?.date || t.startDate || '');
-                          navigate(`/trip/${t.id}`);
-                        }}
-                      >
-                        Open
-                      </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (!t?.id) return;
+                        setTrip(t);
+                        setCities(t.cities || []);
+                        setSelectedDayId(t.days?.[0]?.id || null);
+                        setSelectedDayDate(t.days?.[0]?.date || t.startDate || '');
+                        navigate(`/trip/${t.id}`);
+                      }}
+                    >
+                      Open
+                    </Button>
                     </Flex>
                   ))}
                 </Stack>
@@ -1414,6 +1419,9 @@ function App() {
             </Card>
           )}
           {navBar(activeTripId)}
+          <Button as={RouterLink} to="/" variant="link" color="whiteAlpha.800" alignSelf="flex-start">
+            ← Back to trips
+          </Button>
         </Stack>
 
         <Box>
@@ -1918,6 +1926,7 @@ function App() {
                 })}
                 onQuickPromote={handleQuickPromotePlace}
                 onAddClick={() => {
+                  if (!requireEditor()) return;
                   if (!trip?.id) {
                     toast({ status: 'warning', title: 'Create a trip first' });
                     return;
