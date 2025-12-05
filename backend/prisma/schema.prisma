@@ -73,7 +73,8 @@ model Activity {
   startTime   DateTime?
   endTime     DateTime?
   location    String?
-  category    String?
+  category    IdeaCategory?
+  position    Int       @default(0)
   placeId     Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

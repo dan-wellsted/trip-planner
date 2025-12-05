@@ -28,6 +28,10 @@ export function createDay(tripId, payload) {
   return jsonFetch(`/trips/${tripId}/days`, { method: 'POST', body: payload });
 }
 
+export function updateDay(dayId, payload) {
+  return jsonFetch(`/days/${dayId}`, { method: 'PATCH', body: payload });
+}
+
 export function createActivity(dayId, payload) {
   return jsonFetch(`/days/${dayId}/activities`, { method: 'POST', body: payload });
 }
@@ -38,6 +42,10 @@ export function updateActivity(activityId, payload) {
 
 export function deleteActivity(activityId) {
   return jsonFetch(`/activities/${activityId}`, { method: 'DELETE' });
+}
+
+export function reorderActivities(dayId, order) {
+  return jsonFetch(`/days/${dayId}/activities/reorder`, { method: 'POST', body: { order } });
 }
 
 export function toggleChecklistItem(itemId) {
