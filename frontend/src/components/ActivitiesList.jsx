@@ -11,7 +11,7 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-const ActivityItem = ({ activity, onEdit, onDelete, cityTag, durationText, travelText, dragging, overbooked }) => (
+const ActivityItem = ({ activity, onEdit, onDelete, cityTag, durationText, travelText, leaveByText, dragging, overbooked }) => (
   <Box
     p={3}
     borderRadius="12px"
@@ -33,6 +33,11 @@ const ActivityItem = ({ activity, onEdit, onDelete, cityTag, durationText, trave
             {travelText}
           </Text>
         )}
+        {leaveByText && (
+          <Text color="whiteAlpha.500" fontSize="xs">
+            {leaveByText}
+          </Text>
+        )}
       </Box>
       <HStack>
         {cityTag}
@@ -47,7 +52,7 @@ const ActivityItem = ({ activity, onEdit, onDelete, cityTag, durationText, trave
   </Box>
 );
 
-const SortableActivity = ({ activity, onEdit, onDelete, cityTag, durationText, travelText, overbooked }) => {
+const SortableActivity = ({ activity, onEdit, onDelete, cityTag, durationText, travelText, leaveByText, overbooked }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: activity.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -63,6 +68,7 @@ const SortableActivity = ({ activity, onEdit, onDelete, cityTag, durationText, t
         cityTag={cityTag}
         durationText={durationText}
         travelText={travelText}
+        leaveByText={leaveByText}
         dragging={isDragging}
         overbooked={overbooked}
       />
@@ -83,7 +89,7 @@ const formatTimeRange = (startTime, endTime) => {
   return 'Time tbd';
 };
 
-const ActivitiesList = ({ activities, cities, onEdit, onDelete, onReorder, dayOverbooked }) => {
+const ActivitiesList = ({ activities, cities, onEdit, onDelete, onReorder, dayOverbooked, travelEstimate, leaveBy }) => {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const [activeId, setActiveId] = useState(null);
   const activeActivity = useMemo(() => (activities || []).find((a) => a.id === activeId), [activeId, activities]);
@@ -110,12 +116,9 @@ const ActivitiesList = ({ activities, cities, onEdit, onDelete, onReorder, dayOv
             </Tag>
           ) : null;
           const durationText = formatTimeRange(act.startTime, act.endTime);
-          let travelText = '';
-          if (idx > 0) {
-            const prev = activities[idx - 1];
-            const sameCity = prev?.cityId && act.cityId && prev.cityId === act.cityId;
-            travelText = sameCity ? 'Travel est. 15 min' : 'Travel est. 45 min';
-          }
+          const travelMinutes = travelEstimate ? travelEstimate(idx, activities) : 0;
+          const travelText = travelMinutes ? `Travel est. ${travelMinutes} min` : '';
+          const leaveByText = leaveBy ? leaveBy(idx, activities, travelMinutes) : '';
           return (
             <SortableActivity
               key={act.id}
@@ -125,6 +128,7 @@ const ActivitiesList = ({ activities, cities, onEdit, onDelete, onReorder, dayOv
               cityTag={cityTag}
               durationText={durationText}
               travelText={travelText}
+              leaveByText={leaveByText}
               overbooked={dayOverbooked}
             />
           );

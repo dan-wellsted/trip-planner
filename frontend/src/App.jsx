@@ -227,6 +227,35 @@ function activityDurationMinutes(activity) {
   return 60;
 }
 
+function estimateTravelMinutes(prev, next) {
+  if (!prev || !next) return 0;
+  const sameCity = prev.cityId && next.cityId && prev.cityId === next.cityId;
+  const bothHaveCoords = prev.lat && prev.lng && next.lat && next.lng;
+  if (bothHaveCoords) {
+    const toRad = (v) => (v * Math.PI) / 180;
+    const R = 6371; // km
+    const dLat = toRad(next.lat - prev.lat);
+    const dLon = toRad(next.lng - prev.lng);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(prev.lat)) * Math.cos(toRad(next.lat)) * Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const km = R * c;
+    if (km < 1) return 10;
+    if (km < 5) return 20;
+    if (km < 20) return 40;
+    return 60;
+  }
+  return sameCity ? 20 : 45;
+}
+
+function computeLeaveBy(prev, next, travelMinutes) {
+  if (!prev || !travelMinutes || !next?.startTime) return '';
+  if (!prev.startTime) return '';
+  const startNext = new Date(next.startTime);
+  const leave = new Date(startNext.getTime() - travelMinutes * 60000);
+  const opts = { hour: '2-digit', minute: '2-digit' };
+  return `Leave by ${leave.toLocaleTimeString([], opts)} (${travelMinutes}m travel)`;
+}
+
 function parsePlaceLink(raw) {
   const cleaned = (raw || '').trim();
   if (!cleaned) return {};
@@ -1138,6 +1167,18 @@ function App() {
                             activities={day.activities || []}
                             cities={cities}
                             dayOverbooked={dayOverbooked}
+                            travelEstimate={(idx, acts) => {
+                              if (idx === 0) return 0;
+                              const prev = acts[idx - 1];
+                              const next = acts[idx];
+                              return estimateTravelMinutes(prev, next);
+                            }}
+                            leaveBy={(idx, acts, travelMinutes) => {
+                              if (idx === 0) return '';
+                              const prev = acts[idx - 1];
+                              const next = acts[idx];
+                              return computeLeaveBy(prev, next, travelMinutes);
+                            }}
                             onEdit={(act) => {
                               setSelectedDayId(day.id);
                               setEditingActivityId(act.id);

@@ -71,10 +71,12 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - `POST /places/:id/promote` – create an activity from a place `{ dayId, startTime?, location?, category? }`
 
 ## Planning to-dos (future features)
-- Saved places library: **done** (list+map, search/sort/group, favorites, paste-from-link, promote to activity; next: clustering, drag-to-day, server favorites).
+- Saved places library: **done** (list+map with clustering toggle, search/sort/group, favorites, paste-from-link, promote to activity; next: server favorites, drag-to-day).
 - Ideas board: **done** (drag/drop reorder, city filter, save-as-place, promote to activity; next: bulk promote, richer statuses).
 - Map-first planning: **done** (places map view with clustering and quick add-to-day from map; next: drag-to-day assignment if desired).
-- Day builder with travel times: start/end times, transit estimates (walking/JR/subway), overbooked-day warnings, add-from-search/map.
+- Day builder with travel times: **in progress** (activity reorder with persisted position, start/end times, durations, overbook warnings, basic travel estimates). Next: better travel heuristics and add-from-search/map.
+- Routing/UX: add React Router for multi-page navigation and smoother reload handling.
+- Auth + trip workspace: add user auth and trip creation/selection flow so users can sign in and manage multiple trips.
 - Booking vault: upload/attach PDFs/PNRs/QRs (flights, hotels, rail, museum tickets), show on the right day, offline cache.
 - Packing + shopping lists: templates by season/region, split bring vs. buy-in-Japan, auto weather-driven items.
 - Budget + currency: daily spend targets, category budgets, quick JPY conversion, highlight hot spend days.
