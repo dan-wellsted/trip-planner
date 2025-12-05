@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { addDays, differenceInCalendarDays, format } from 'date-fns';
+import { Routes, Route, useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Badge,
   Box,
   Button,
+  ButtonGroup,
   Card,
   CardBody,
   CardHeader,
@@ -1027,55 +1029,37 @@ function App() {
           </HStack>
         </Stack>
 
-        <Tabs variant="unstyled">
-          <TabList gap={2} mb={4}>
-            <Tab
-              px={4}
-              py={2}
-              borderRadius="md"
-              bg="whiteAlpha.100"
-              color="whiteAlpha.800"
-              _hover={{ bg: 'whiteAlpha.200' }}
-              _selected={{ bg: 'indigo.600', color: 'white' }}
-            >
-              Dashboard
-            </Tab>
-            <Tab
-              px={4}
-              py={2}
-              borderRadius="md"
-              bg="whiteAlpha.100"
-              color="whiteAlpha.800"
-              _hover={{ bg: 'whiteAlpha.200' }}
-              _selected={{ bg: 'indigo.600', color: 'white' }}
-            >
-              Calendar
-            </Tab>
-            <Tab
-              px={4}
-              py={2}
-              borderRadius="md"
-              bg="whiteAlpha.100"
-              color="whiteAlpha.800"
-              _hover={{ bg: 'whiteAlpha.200' }}
-              _selected={{ bg: 'indigo.600', color: 'white' }}
-            >
-              Places
-            </Tab>
-            <Tab
-              px={4}
-              py={2}
-              borderRadius="md"
-              bg="whiteAlpha.100"
-              color="whiteAlpha.800"
-              _hover={{ bg: 'whiteAlpha.200' }}
-              _selected={{ bg: 'indigo.600', color: 'white' }}
-            >
-              Ideas
-            </Tab>
-          </TabList>
-          <TabPanels>
-            <TabPanel px={0} bg="transparent" color="whiteAlpha.900">
+        <Box>
+          <ButtonGroup variant="ghost" spacing={2} mb={4}>
+            {[
+              { label: 'Dashboard', path: '/' },
+              { label: 'Calendar', path: '/calendar' },
+              { label: 'Places', path: '/places' },
+              { label: 'Ideas', path: '/ideas' },
+            ].map((item) => {
+              const active = location.pathname === item.path || (item.path === '/' && location.pathname === '');
+              return (
+                <Button
+                  key={item.path}
+                  as={RouterLink}
+                  to={item.path}
+                  px={4}
+                  py={2}
+                  borderRadius="md"
+                  bg={active ? 'indigo.600' : 'whiteAlpha.100'}
+                  color={active ? 'white' : 'whiteAlpha.800'}
+                  _hover={{ bg: 'whiteAlpha.200' }}
+                >
+                  {item.label}
+                </Button>
+              );
+            })}
+          </ButtonGroup>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <Box>
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                 <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
                   <CardHeader pb={2}>
@@ -1281,15 +1265,19 @@ function App() {
                   </Card>
                 </Stack>
               </SimpleGrid>
-            </TabPanel>
+                </Box>
+              }
+            />
 
-            <TabPanel px={0} bg="transparent" color="whiteAlpha.900">
-              <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
-                <CardHeader pb={2}>
-                  <Heading size="md" color="white">Calendar</Heading>
-                  <Text color="whiteAlpha.700" fontSize="sm">
-                    One-glance view of days and activities.
-                  </Text>
+            <Route
+              path="/calendar"
+              element={
+                <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
+                  <CardHeader pb={2}>
+                    <Heading size="md" color="white">Calendar</Heading>
+                    <Text color="whiteAlpha.700" fontSize="sm">
+                      One-glance view of days and activities.
+                    </Text>
                 </CardHeader>
                 <CardBody>
                   <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
@@ -1400,11 +1388,15 @@ function App() {
                     })}
                   </SimpleGrid>
                 </CardBody>
-              </Card>
-            </TabPanel>
+                </Card>
+              }
+            />
 
-            <TabPanel px={0} bg="transparent" color="whiteAlpha.900">
-              {undoPlace && (
+            <Route
+              path="/places"
+              element={
+                <Box>
+                  {undoPlace && (
                 <Box
                   mb={3}
                   p={3}
@@ -1497,10 +1489,14 @@ function App() {
                 }}
                 onDelete={handleDeletePlace}
               />
-            </TabPanel>
+                </Box>
+              }
+            />
 
-            <TabPanel px={0} bg="transparent" color="whiteAlpha.900">
-              <IdeasBoard
+            <Route
+              path="/ideas"
+              element={
+                <IdeasBoard
                 ideas={ideas}
                 cities={cities}
                 cityFilter={cityFilter}
@@ -1544,15 +1540,17 @@ function App() {
                   } else {
                     order.splice(insertIndex, 0, movingId);
                   }
-                  reorderIdeas(trip.id, order)
-                    .then((updated) => setIdeas(updated))
-                    .catch((err) => toast({ status: 'error', title: 'Failed to reorder ideas', description: err.message }));
+                    reorderIdeas(trip.id, order)
+                      .then((updated) => setIdeas(updated))
+                      .catch((err) => toast({ status: 'error', title: 'Failed to reorder ideas', description: err.message }));
                 }}
                 onSaveAsPlace={handleSaveIdeaAsPlace}
               />
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
+              }
+            />
+            <Route path="*" element={<Box color="white">Not found</Box>} />
+          </Routes>
+        </Box>
       </Stack>
 
       <Modal isOpen={cityModal.isOpen} onClose={cityModal.onClose} isCentered size="lg">
