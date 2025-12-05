@@ -14,6 +14,30 @@ app.use(morgan('dev'));
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+async function ensureTripDays(trip) {
+  if (!trip?.startDate || !trip?.endDate) return;
+  const start = new Date(trip.startDate);
+  const end = new Date(trip.endDate);
+  if (Number.isNaN(start) || Number.isNaN(end)) return;
+  const existing = await prisma.day.findMany({
+    where: { tripId: trip.id },
+    select: { id: true, date: true },
+  });
+  const existingByIso = new Set(existing.map((d) => d.date.toISOString().slice(0, 10)));
+
+  const toCreate = [];
+  for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
+    const iso = dt.toISOString().slice(0, 10);
+    if (!existingByIso.has(iso)) {
+      toCreate.push({ date: new Date(iso), title: null, tripId: trip.id });
+    }
+  }
+
+  if (toCreate.length > 0) {
+    await prisma.day.createMany({ data: toCreate });
+  }
+}
+
 app.get('/health', asyncHandler(async (_req, res) => {
   const tripCount = await prisma.trip.count();
   res.json({ status: 'ok', trips: tripCount });
@@ -35,6 +59,7 @@ app.get('/trips', asyncHandler(async (_req, res) => {
       bookings: true,
     },
   });
+  await Promise.all(trips.map((trip) => ensureTripDays(trip)));
   res.json(trips);
 }));
 
@@ -81,7 +106,28 @@ app.get('/trips/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'Trip not found' });
   }
 
-  res.json(trip);
+  await ensureTripDays(trip);
+
+  const refreshed = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: {
+      cities: { orderBy: { position: 'asc' } },
+      days: {
+        orderBy: { date: 'asc' },
+        include: {
+          activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } },
+          city: true,
+        },
+      },
+      checklist: true,
+      expenses: true,
+      media: true,
+      ideas: true,
+      bookings: true,
+    },
+  });
+
+  res.json(refreshed);
 }));
 
 app.post('/trips/:id/days', asyncHandler(async (req, res) => {
@@ -102,6 +148,20 @@ app.post('/trips/:id/days', asyncHandler(async (req, res) => {
   });
 
   res.status(201).json(day);
+}));
+
+app.patch('/days/:id', asyncHandler(async (req, res) => {
+  const dayId = Number(req.params.id);
+  const { title, note, cityId } = req.body;
+  const updated = await prisma.day.update({
+    where: { id: dayId },
+    data: {
+      title: title ?? undefined,
+      note: note ?? undefined,
+      cityId: cityId ?? undefined,
+    },
+  });
+  res.json(updated);
 }));
 
 app.post('/days/:id/activities', asyncHandler(async (req, res) => {

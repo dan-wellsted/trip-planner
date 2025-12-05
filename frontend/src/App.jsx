@@ -66,6 +66,7 @@ import {
   updatePlace,
   deletePlace,
   promotePlace,
+  updateDay,
 } from './api';
 import BookingsCard from './components/BookingsCard';
 import IdeasBoard from './components/IdeasBoard';
@@ -268,6 +269,7 @@ function App() {
   const [selectedDayDate, setSelectedDayDate] = useState(fallbackTrip.days?.[0]?.date || '');
   const [tripForm, setTripForm] = useState({ name: '', startDate: '', endDate: '' });
   const [dayForm, setDayForm] = useState({ date: '', title: '' });
+  const [editingDayId, setEditingDayId] = useState(null);
   const [activityForm, setActivityForm] = useState({ title: '', startTime: '', location: '', category: '', cityId: '' });
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [expenseForm, setExpenseForm] = useState({ amount: '', currency: 'JPY', note: '', category: '' });
@@ -827,11 +829,16 @@ function App() {
       return;
     }
     try {
-      await createDay(trip.id, { date: dayForm.date, title: dayForm.title || null, cityId: cityFilter || null });
+      if (editingDayId) {
+        await updateDay(editingDayId, { title: dayForm.title || null });
+      } else {
+        await createDay(trip.id, { date: dayForm.date, title: dayForm.title || null, cityId: cityFilter || null });
+      }
       await loadTrips();
       setDayForm({ date: '', title: '' });
+      setEditingDayId(null);
       dayModal.onClose();
-      toast({ status: 'success', title: 'Day added' });
+      toast({ status: 'success', title: editingDayId ? 'Day updated' : 'Day added' });
     } catch (err) {
       toast({ status: 'error', title: 'Failed to add day', description: err.message });
     }
@@ -1094,9 +1101,25 @@ function App() {
                                   {c.name}
                                 </Tag>
                               ))}
-                              <Text color="whiteAlpha.700" fontSize="sm">
-                                {day.title}
-                              </Text>
+                              <Flex align="center" gap={2}>
+                                <Text color="whiteAlpha.700" fontSize="sm">
+                                  {day.title || 'Untitled day'}
+                                </Text>
+                                <Button
+                                  size="xs"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setEditingDayId(day.id);
+                                    setDayForm({
+                                      date: day.date?.slice(0, 10) || '',
+                                      title: day.title || '',
+                                    });
+                                    dayModal.onOpen();
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              </Flex>
                             </HStack>
                           </Flex>
                           <Stack spacing={3}>
@@ -1649,16 +1672,21 @@ function App() {
           </ModalFooter>
         </ModalContent>
       </Modal>
-      <Modal isOpen={dayModal.isOpen} onClose={dayModal.onClose} isCentered>
+      <Modal isOpen={dayModal.isOpen} onClose={() => { setEditingDayId(null); setDayForm({ date: '', title: '' }); dayModal.onClose(); }} isCentered>
         <ModalOverlay />
         <ModalContent bg="#0f1624" border="1px solid rgba(255,255,255,0.08)">
-          <ModalHeader>Add day</ModalHeader>
+          <ModalHeader>{editingDayId ? 'Edit day' : 'Add day'}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Stack spacing={3}>
               <FormControl>
                 <FormLabel>Date</FormLabel>
-                <Input type="date" value={dayForm.date} onChange={(e) => setDayForm((f) => ({ ...f, date: e.target.value }))} />
+                <Input
+                  type="date"
+                  value={dayForm.date}
+                  onChange={(e) => setDayForm((f) => ({ ...f, date: e.target.value }))}
+                  isDisabled={Boolean(editingDayId)}
+                />
               </FormControl>
               <FormControl>
                 <FormLabel>Title</FormLabel>
@@ -1671,10 +1699,18 @@ function App() {
             </Stack>
           </ModalBody>
           <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={dayModal.onClose}>
+            <Button
+              variant="ghost"
+              mr={3}
+              onClick={() => {
+                setEditingDayId(null);
+                setDayForm({ date: '', title: '' });
+                dayModal.onClose();
+              }}
+            >
               Cancel
             </Button>
-            <Button onClick={handleCreateDay}>Add day</Button>
+            <Button onClick={handleCreateDay}>{editingDayId ? 'Save day' : 'Add day'}</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
