@@ -212,6 +212,53 @@ function formatActivityTime(activity) {
   return tzAbbrev ? `${formatted} ${tzAbbrev}` : formatted;
 }
 
+function parsePlaceLink(raw) {
+  const cleaned = (raw || '').trim();
+  if (!cleaned) return {};
+  const result = { name: '', link: cleaned, lat: '', lng: '' };
+  const trySetCoords = (lat, lng) => {
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      result.lat = String(lat);
+      result.lng = String(lng);
+    }
+  };
+
+  try {
+    const url = new URL(cleaned);
+    const q = url.searchParams.get('q') || '';
+    const segments = url.pathname.split('/').filter(Boolean);
+    const lastPath = segments.pop() || '';
+    const placeIdx = segments.findIndex((seg) => seg.toLowerCase() === 'place');
+    const placeNameSeg = placeIdx !== -1 ? segments[placeIdx + 1] : null;
+    const nameFromQ = decodeURIComponent(q.replace(/\+/g, ' ')).split(',')[0].trim();
+    const nameFromPlace = placeNameSeg ? decodeURIComponent(placeNameSeg.replace(/\+/g, ' ')).replace(/[-_]/g, ' ').trim() : '';
+    const nameFromPath = decodeURIComponent(lastPath.replace(/[-_]/g, ' ')).trim();
+    result.name = nameFromQ || nameFromPlace || nameFromPath || '';
+
+    // Parse coords from Google Maps style URLs (/@lat,lng/ or !3dLAT!4dLNG) or plain q=lat,lng
+    const hrefMatch = url.href.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    const pathMatch = url.pathname.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    const coordMatch = hrefMatch || pathMatch;
+    if (coordMatch) {
+      trySetCoords(Number(coordMatch[1]), Number(coordMatch[2]));
+    }
+    const qParts = q.split(',').map((p) => Number(p.trim()));
+    if (qParts.length === 2 && qParts.every((n) => Number.isFinite(n))) {
+      trySetCoords(qParts[0], qParts[1]);
+    }
+    const bangLat = url.href.match(/!3d(-?\d+\.?\d*)/);
+    const bangLng = url.href.match(/!4d(-?\d+\.?\d*)/);
+    if (bangLat && bangLng) {
+      trySetCoords(Number(bangLat[1]), Number(bangLng[1]));
+    }
+
+    return result;
+  } catch (err) {
+    result.name = cleaned.slice(0, 60);
+    return result;
+  }
+}
+
 function App() {
   const [trip, setTrip] = useState(fallbackTrip);
   const [status, setStatus] = useState('Offline demo data');
@@ -268,6 +315,14 @@ function App() {
   const promotePlaceModal = useDisclosure();
   const [placePromote, setPlacePromote] = useState({ placeId: null, dayId: '', startTime: '', location: '', category: '' });
   const [placeFilter, setPlaceFilter] = useState({ cityId: null, tag: null });
+  const [placeSearch, setPlaceSearch] = useState('');
+  const [placeSort, setPlaceSort] = useState('newest');
+  const [placeGroupBy, setPlaceGroupBy] = useState('none');
+  const [placeView, setPlaceView] = useState('list');
+  const [placeFavorites, setPlaceFavorites] = useState([]);
+  const [placeFavoritesOnly, setPlaceFavoritesOnly] = useState(false);
+  const [undoPlace, setUndoPlace] = useState(null);
+  const [undoTimer, setUndoTimer] = useState(null);
   const toast = useToast();
 
   const loadTrips = async () => {
@@ -321,6 +376,29 @@ function App() {
       setSelectedDayDate(fallbackTrip.days?.[0]?.date || fallbackTrip.startDate || '');
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('placeFavorites');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setPlaceFavorites(parsed.filter((id) => typeof id === 'number'));
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load favorites', err);
+    }
+  }, []);
+
+  const persistFavorites = (ids) => {
+    setPlaceFavorites(ids);
+    try {
+      localStorage.setItem('placeFavorites', JSON.stringify(ids));
+    } catch (err) {
+      console.warn('Failed to persist favorites', err);
     }
   };
 
@@ -565,14 +643,58 @@ function App() {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
     }
+    const toRestore = places.find((p) => p.id === placeId) || null;
+    setPlaces((prev) => prev.filter((p) => p.id !== placeId));
+    if (undoTimer) clearTimeout(undoTimer);
+    setUndoPlace(toRestore);
+    const timer = setTimeout(() => setUndoPlace(null), 6000);
+    setUndoTimer(timer);
     try {
       await deletePlace(placeId);
-      const refreshed = await fetchPlaces(trip.id);
-      setPlaces(refreshed);
       toast({ status: 'success', title: 'Place deleted' });
     } catch (err) {
+      setPlaces((prev) => (toRestore ? [toRestore, ...prev] : prev));
       toast({ status: 'error', title: 'Failed to delete place', description: err.message });
     }
+  };
+
+  const handleSavePlaceFromLink = (linkValue) => {
+    if (!trip?.id) {
+      toast({ status: 'warning', title: 'Create a trip first' });
+      return;
+    }
+    const parsed = parsePlaceLink(linkValue);
+    setEditingPlaceId(null);
+    setPlaceForm({
+      name: parsed.name || '',
+      address: '',
+      lat: parsed.lat || '',
+      lng: parsed.lng || '',
+      tag: '',
+      link: parsed.link || '',
+      notes: '',
+      cityId: placeFilter.cityId || '',
+    });
+    placeModal.onOpen();
+  };
+
+  const handleSaveIdeaAsPlace = (idea) => {
+    if (!trip?.id) {
+      toast({ status: 'warning', title: 'Create a trip first' });
+      return;
+    }
+    setEditingPlaceId(null);
+    setPlaceForm({
+      name: idea.title || '',
+      address: '',
+      lat: '',
+      lng: '',
+      tag: idea.category || '',
+      link: idea.link || '',
+      notes: idea.note || '',
+      cityId: idea.cityId || cityFilter || '',
+    });
+    placeModal.onOpen();
   };
 
   const handlePromotePlace = async () => {
@@ -593,6 +715,39 @@ function App() {
       toast({ status: 'success', title: 'Promoted to activity' });
     } catch (err) {
       toast({ status: 'error', title: 'Failed to promote place', description: err.message });
+    }
+  };
+
+  const togglePlaceFavorite = (placeId) => {
+    if (!placeId) return;
+    setPlaceFavorites((prev) => {
+      const exists = prev.includes(placeId);
+      const next = exists ? prev.filter((id) => id !== placeId) : [...prev, placeId];
+      persistFavorites(next);
+      return next;
+    });
+  };
+
+  const handleUndoDeletePlace = async () => {
+    if (!undoPlace || !trip?.id) return;
+    const payload = {
+      name: undoPlace.name,
+      address: undoPlace.address || null,
+      lat: undoPlace.lat || null,
+      lng: undoPlace.lng || null,
+      tag: undoPlace.tag || null,
+      link: undoPlace.link || null,
+      notes: undoPlace.notes || null,
+      cityId: undoPlace.cityId || null,
+    };
+    try {
+      const recreated = await createPlace(trip.id, payload);
+      setPlaces((prev) => [recreated, ...prev]);
+      setUndoPlace(null);
+      if (undoTimer) clearTimeout(undoTimer);
+      toast({ status: 'success', title: 'Undo delete', description: `${recreated.name} restored` });
+    } catch (err) {
+      toast({ status: 'error', title: 'Failed to undo delete', description: err.message });
     }
   };
 
@@ -858,9 +1013,9 @@ function App() {
           <TabPanels>
             <TabPanel px={0} bg="transparent" color="whiteAlpha.900">
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                <Card>
+                <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
                   <CardHeader pb={2}>
-                    <Heading size="md">Itinerary</Heading>
+                    <Heading size="md" color="white">Itinerary</Heading>
                     <Text color="whiteAlpha.700" fontSize="sm">
                       Day plan with quick hits.
                     </Text>
@@ -962,9 +1117,9 @@ function App() {
                 </Card>
 
                 <Stack spacing={4}>
-                  <Card>
+                  <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
                     <CardHeader pb={2}>
-                      <Heading size="md">Checklist</Heading>
+                      <Heading size="md" color="white">Checklist</Heading>
                       <Text color="whiteAlpha.700" fontSize="sm">
                         Keep the pre-trip and daily tasks handy.
                       </Text>
@@ -995,9 +1150,9 @@ function App() {
 
                   <BookingsCard bookings={bookings} onAddClick={bookingModal.onOpen} onDelete={handleDeleteBooking} />
 
-                  <Card>
+                  <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
                     <CardHeader pb={2}>
-                      <Heading size="md">Spend so far</Heading>
+                      <Heading size="md" color="white">Spend so far</Heading>
                       <Text color="whiteAlpha.700" fontSize="sm">
                         Quick look at cash burn.
                       </Text>
@@ -1031,9 +1186,9 @@ function App() {
                     </CardBody>
                   </Card>
 
-                  <Card>
+                  <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
                     <CardHeader pb={2}>
-                      <Heading size="md">Moments</Heading>
+                      <Heading size="md" color="white">Moments</Heading>
                       <Text color="whiteAlpha.700" fontSize="sm">
                         Drop photos and links; connect to `/trips/:id/media` when live.
                       </Text>
@@ -1054,9 +1209,9 @@ function App() {
             </TabPanel>
 
             <TabPanel px={0} bg="transparent" color="whiteAlpha.900">
-              <Card>
+              <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
                 <CardHeader pb={2}>
-                  <Heading size="md">Calendar</Heading>
+                  <Heading size="md" color="white">Calendar</Heading>
                   <Text color="whiteAlpha.700" fontSize="sm">
                     One-glance view of days and activities.
                   </Text>
@@ -1167,11 +1322,52 @@ function App() {
             </TabPanel>
 
             <TabPanel px={0} bg="transparent" color="whiteAlpha.900">
+              {undoPlace && (
+                <Box
+                  mb={3}
+                  p={3}
+                  borderRadius="12px"
+                  bg="yellow.100"
+                  color="gray.900"
+                  border="1px solid rgba(0,0,0,0.08)"
+                >
+                  <Flex align="center" justify="space-between" gap={3}>
+                    <Text>Place deleted: {undoPlace.name}. Undo?</Text>
+                    <HStack>
+                      <Button size="sm" onClick={handleUndoDeletePlace}>
+                        Undo
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setUndoPlace(null);
+                          if (undoTimer) clearTimeout(undoTimer);
+                        }}
+                      >
+                        Dismiss
+                      </Button>
+                    </HStack>
+                  </Flex>
+                </Box>
+              )}
               <PlacesBoard
                 places={places}
                 cities={cities}
                 cityFilter={placeFilter.cityId}
                 tagFilter={placeFilter.tag}
+                search={placeSearch}
+                sort={placeSort}
+                groupBy={placeGroupBy}
+                view={placeView}
+                favorites={placeFavorites}
+                favoritesOnly={placeFavoritesOnly}
+                onToggleFavoritesOnly={(val) => setPlaceFavoritesOnly(val)}
+                onToggleFavorite={togglePlaceFavorite}
+                onViewChange={setPlaceView}
+                onSearchChange={setPlaceSearch}
+                onSortChange={setPlaceSort}
+                onGroupChange={setPlaceGroupBy}
                 onFilterChange={(next) => setPlaceFilter(next)}
                 onAddClick={() => {
                   if (!trip?.id) {
@@ -1182,6 +1378,7 @@ function App() {
                   setPlaceForm({ name: '', address: '', lat: '', lng: '', tag: '', link: '', notes: '', cityId: '' });
                   placeModal.onOpen();
                 }}
+                onSaveFromLink={handleSavePlaceFromLink}
                 onPromote={(place) => {
                   setPlacePromote({
                     placeId: place.id,
@@ -1259,6 +1456,7 @@ function App() {
                     .then((updated) => setIdeas(updated))
                     .catch((err) => toast({ status: 'error', title: 'Failed to reorder ideas', description: err.message }));
                 }}
+                onSaveAsPlace={handleSaveIdeaAsPlace}
               />
             </TabPanel>
           </TabPanels>
@@ -1577,11 +1775,19 @@ function App() {
               </HStack>
               <FormControl>
                 <FormLabel>Tag</FormLabel>
-                <Input
-                  placeholder="food / cafe / sight / shop"
+                <Select
+                  placeholder="Select tag"
                   value={placeForm.tag}
                   onChange={(e) => setPlaceForm((f) => ({ ...f, tag: e.target.value }))}
-                />
+                >
+                  <option value="food">Food</option>
+                  <option value="culture">Culture</option>
+                  <option value="shop">Shop</option>
+                  <option value="nature">Nature</option>
+                  <option value="nightlife">Nightlife</option>
+                  <option value="transport">Transport</option>
+                  <option value="misc">Misc</option>
+                </Select>
               </FormControl>
               <FormControl>
                 <FormLabel>Link</FormLabel>
@@ -1602,7 +1808,7 @@ function App() {
               <FormControl>
                 <FormLabel>City</FormLabel>
                 <Select
-                  placeholder="Optional"
+                  placeholder="Select city"
                   value={placeForm.cityId}
                   onChange={(e) => setPlaceForm((f) => ({ ...f, cityId: e.target.value }))}
                 >
@@ -1633,6 +1839,10 @@ function App() {
                   toast({ status: 'warning', title: 'Place name required' });
                   return;
                 }
+                if (!placeForm.cityId) {
+                  toast({ status: 'warning', title: 'City is required' });
+                  return;
+                }
                 try {
                   if (editingPlaceId) {
                     await updatePlace(editingPlaceId, {
@@ -1643,7 +1853,7 @@ function App() {
                       tag: placeForm.tag || null,
                       link: placeForm.link || null,
                       notes: placeForm.notes || null,
-                      cityId: placeForm.cityId ? Number(placeForm.cityId) : null,
+                      cityId: Number(placeForm.cityId),
                     });
                   } else {
                     await createPlace(trip.id, {
@@ -1654,7 +1864,7 @@ function App() {
                       tag: placeForm.tag || null,
                       link: placeForm.link || null,
                       notes: placeForm.notes || null,
-                      cityId: placeForm.cityId ? Number(placeForm.cityId) : null,
+                      cityId: Number(placeForm.cityId),
                     });
                   }
                   const refreshed = await fetchPlaces(trip.id);

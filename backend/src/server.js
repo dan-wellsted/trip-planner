@@ -375,6 +375,9 @@ app.post('/trips/:id/places', asyncHandler(async (req, res) => {
   if (!name) {
     return res.status(400).json({ error: 'name is required' });
   }
+  if (!cityId) {
+    return res.status(400).json({ error: 'cityId is required' });
+  }
 
   const place = await prisma.place.create({
     data: {
