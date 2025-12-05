@@ -848,6 +848,7 @@ function App() {
   };
 
   const handleDeletePlace = async (placeId) => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -907,6 +908,7 @@ function App() {
   };
 
   const handlePromotePlace = async () => {
+    if (!requireEditor()) return;
     if (!placePromote.placeId || !placePromote.dayId) {
       toast({ status: 'warning', title: 'Pick a day to promote to' });
       return;
@@ -934,6 +936,7 @@ function App() {
   };
 
   const handleQuickPromotePlace = async (place, dayId) => {
+    if (!requireEditor()) return;
     if (!place || !dayId) {
       toast({ status: 'warning', title: 'Pick a day to promote to' });
       return;
@@ -986,6 +989,10 @@ function App() {
   };
 
   const togglePlaceFavorite = (placeId) => {
+    if (!canEditTrip) {
+      toast({ status: 'warning', title: 'View-only access', description: 'You do not have edit rights on this trip.' });
+      return;
+    }
     if (!placeId) return;
     setPlaceFavorites((prev) => {
       const exists = prev.includes(placeId);
@@ -996,6 +1003,7 @@ function App() {
   };
 
   const handleUndoDeletePlace = async () => {
+    if (!requireEditor()) return;
     if (!undoPlace || !trip?.id) return;
     const payload = {
       name: undoPlace.name,
