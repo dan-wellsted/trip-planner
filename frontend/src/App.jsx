@@ -718,6 +718,31 @@ function App() {
     }
   };
 
+  const handleQuickPromotePlace = async (place, dayId) => {
+    if (!place || !dayId) {
+      toast({ status: 'warning', title: 'Pick a day to promote to' });
+      return;
+    }
+    try {
+      let dayToUse = dayId;
+      if (String(dayId).startsWith('date:')) {
+        const iso = String(dayId).replace('date:', '');
+        const newDay = await createDay(trip.id, { date: iso, title: null, cityId: place.cityId || null });
+        dayToUse = newDay.id;
+      }
+      await promotePlace(place.id, {
+        dayId: Number(dayToUse),
+        startTime: null,
+        location: place.address || place.name,
+        category: place.tag || null,
+      });
+      await loadTrips();
+      toast({ status: 'success', title: 'Promoted to activity' });
+    } catch (err) {
+      toast({ status: 'error', title: 'Failed to promote place', description: err.message });
+    }
+  };
+
   const togglePlaceFavorite = (placeId) => {
     if (!placeId) return;
     setPlaceFavorites((prev) => {
@@ -1369,6 +1394,16 @@ function App() {
                 onSortChange={setPlaceSort}
                 onGroupChange={setPlaceGroupBy}
                 onFilterChange={(next) => setPlaceFilter(next)}
+                dayOptions={daysGrid.map((date) => {
+                  const iso = format(date, 'yyyy-MM-dd');
+                  const existing = sortedDays.find((d) => d.date?.slice(0, 10) === iso);
+                  return {
+                    id: existing?.id || `date:${iso}`,
+                    label: `${format(date, 'EEE dd MMM')} — ${existing?.title || 'New day'}`,
+                    iso,
+                  };
+                })}
+                onQuickPromote={handleQuickPromotePlace}
                 onAddClick={() => {
                   if (!trip?.id) {
                     toast({ status: 'warning', title: 'Create a trip first' });

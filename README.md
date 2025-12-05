@@ -3,8 +3,16 @@
 Lightweight Node + Prisma API with a React (Vite) frontend to plan and track a Japan trip. Built for quick itinerary glances, checklists, and shared moments.
 
 ## Structure
-- `backend/`: Express API with Prisma + SQLite (dev). Models for trips, days, activities, checklist, expenses, and media.
-- `frontend/`: React + Vite (JS) UI styled with Chakra (custom coral/indigo theme) showing hero dashboard, itinerary timeline, checklist, and spend view.
+- `backend/`: Express API with Prisma + PostgreSQL (dev uses SQLite). Models for trips, days, activities, checklist, expenses, media, ideas, cities, and places.
+- `frontend/`: React + Vite (JS) UI styled with Chakra (dark coral/indigo theme) showing hero dashboard, itinerary timeline, checklist, spend view, Calendar, Places (list + map), and Ideas board.
+
+## Current features
+- Dashboard: trip hero with day timeline, checklist, bookings, spend, and moments sections.
+- Calendar: month-style view of days/activities with quick add/edit.
+- Cities: manage trip stops and ordering.
+- Places: list + map view, search/sort/group, favorites, paste-a-map-link intake, promote to activity, edit/delete, tag enum shared with ideas/activities, city required.
+- Ideas board: drag/drop reorder, filter by city, save-as-place, promote to activity.
+- Bookings, checklist, expenses: add/edit/delete where supported with toasts and validation.
 
 ## Quick start
 1) Backend
@@ -56,14 +64,16 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - `PATCH /ideas/:id` – update idea fields, status, or category
 - `POST /ideas/:id/promote` – create an activity from an idea `{ dayId, startTime?, location?, category? }`
 - `DELETE /ideas/:id` – remove idea
-
-## Next steps
-- Connect the frontend forms to the API endpoints (currently shows demo data and auto-uses API when available).
-- Add auth (e.g., passwordless links) before sharing.
-- Deploy Postgres-backed API (Railway/Fly/Render) and wire a hosted DB.
-- Add offline caching for itinerary and tickets when on trains / subways.
+- `GET /trips/:id/places` – list saved places
+- `POST /trips/:id/places` – add place `{ name, address?, lat?, lng?, tag?, link?, notes?, cityId }`
+- `PATCH /places/:id` – update place
+- `DELETE /places/:id` – remove place
+- `POST /places/:id/promote` – create an activity from a place `{ dayId, startTime?, location?, category? }`
 
 ## Planning to-dos (future features)
+- Saved places library: **done** (list+map, search/sort/group, favorites, paste-from-link, promote to activity; next: clustering, drag-to-day, server favorites).
+- Ideas board: **done** (drag/drop reorder, city filter, save-as-place, promote to activity; next: bulk promote, richer statuses).
+- Map-first planning: **done** (places map view with clustering and quick add-to-day from map; next: drag-to-day assignment if desired).
 - Day builder with travel times: start/end times, transit estimates (walking/JR/subway), overbooked-day warnings, add-from-search/map.
 - Booking vault: upload/attach PDFs/PNRs/QRs (flights, hotels, rail, museum tickets), show on the right day, offline cache.
 - Packing + shopping lists: templates by season/region, split bring vs. buy-in-Japan, auto weather-driven items.
@@ -74,12 +84,9 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - Smart reminders: push/email for flights/hotels/timed tickets; “leave by” alerts using transit times.
 - Offline-first: cache itinerary/PNRs/checklists for subway use.
 - Seed/import: CSV/ICS paste for flights/hotels to auto-create activities.
-- Map-first planning: map tab with saved places, clustering, and drag-to-day assignment.
 - Multi-city routing: visualize order of cities, distance/time between stops, and smart reorder suggestions.
-- Saved places library: favorites list (food/attractions/cafes) to drop into days quickly.
 - PDF/export: printable itinerary and offline bundle (bookings + QR codes), plus calendar (.ics) export.
 - Collaboration: invite-based editing, comments on activities/bookings, and activity-level reactions.
 - Lodging timeline: show all stays on a horizontal timeline to catch gaps/overlaps.
 - Nearby recs: suggest spots near bookings/activities and surfacing open-now options.
 - Driving/transit estimates: mode selection with time + cost estimates and “leave by” callouts.
-- Ideas board: wishlist with links/notes that can be promoted to activities when confirmed.
