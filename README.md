@@ -69,6 +69,7 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - `PATCH /places/:id` – update place
 - `DELETE /places/:id` – remove place
 - `POST /places/:id/promote` – create an activity from a place `{ dayId, startTime?, location?, category? }`
+- Auth (WIP): `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` (JWT cookie-based, per-trip memberships coming online).
 
 ## Planning to-dos (future features)
 - Saved places library: **done** (list+map, search/sort/group, favorites, paste-from-link, promote to activity; next: clustering, drag-to-day, server favorites).

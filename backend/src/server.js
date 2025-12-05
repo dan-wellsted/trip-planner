@@ -2,17 +2,48 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.PORT || 4000;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+const TOKEN_COOKIE = 'jp_token';
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(morgan('dev'));
+app.use(cookieParser());
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+const signToken = (userId) => jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: '7d' });
+
+const authMiddleware = (req, _res, next) => {
+  const header = req.headers.authorization;
+  let token = null;
+  if (header && header.startsWith('Bearer ')) {
+    token = header.replace('Bearer ', '');
+  } else if (req.cookies?.[TOKEN_COOKIE]) {
+    token = req.cookies[TOKEN_COOKIE];
+  }
+  if (token) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET);
+      if (payload?.sub) {
+        req.userId = Number(payload.sub);
+      }
+    } catch (err) {
+      // ignore invalid token
+    }
+  }
+  next();
+};
+
+app.use(authMiddleware);
 
 async function ensureTripDays(trip) {
   if (!trip?.startDate || !trip?.endDate) return;
@@ -38,37 +69,102 @@ async function ensureTripDays(trip) {
   }
 }
 
+const tripInclude = {
+  cities: { orderBy: { position: 'asc' } },
+  days: {
+    orderBy: { date: 'asc' },
+    include: { activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } }, city: true },
+  },
+  checklist: true,
+  expenses: true,
+  media: true,
+  ideas: true,
+  bookings: true,
+};
+
+const parseTripCities = (trip) => ({
+  ...trip,
+  days: trip.days.map((day) => ({
+    ...day,
+    cityIds: day.cityIdsJson ? JSON.parse(day.cityIdsJson) : (day.cityId ? [day.cityId] : []),
+  })),
+});
+
+app.post('/auth/register', asyncHandler(async (req, res) => {
+  const { email, password, name } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    return res.status(409).json({ error: 'email already registered' });
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
+  const user = await prisma.user.create({
+    data: { email, passwordHash, name: name || null },
+    select: { id: true, email: true, name: true, createdAt: true },
+  });
+  const token = signToken(user.id);
+  res
+    .cookie(TOKEN_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: false })
+    .status(201)
+    .json(user);
+}));
+
+app.post('/auth/login', asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return res.status(401).json({ error: 'invalid credentials' });
+  }
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) {
+    return res.status(401).json({ error: 'invalid credentials' });
+  }
+  const token = signToken(user.id);
+  res
+    .cookie(TOKEN_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: false })
+    .json({ id: user.id, email: user.email, name: user.name, createdAt: user.createdAt });
+}));
+
+app.post('/auth/logout', asyncHandler(async (_req, res) => {
+  res.clearCookie(TOKEN_COOKIE).status(204).end();
+}));
+
+app.get('/auth/me', asyncHandler(async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: 'not authenticated' });
+  const user = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: { id: true, email: true, name: true, createdAt: true },
+  });
+  if (!user) return res.status(401).json({ error: 'not authenticated' });
+  res.json(user);
+}));
+
 app.get('/health', asyncHandler(async (_req, res) => {
   const tripCount = await prisma.trip.count();
   res.json({ status: 'ok', trips: tripCount });
 }));
 
-app.get('/trips', asyncHandler(async (_req, res) => {
+app.get('/trips', asyncHandler(async (req, res) => {
+  const where = req.userId
+    ? {
+        OR: [
+          { ownerId: req.userId },
+          { memberships: { some: { userId: req.userId } } },
+        ],
+      }
+    : undefined;
   const trips = await prisma.trip.findMany({
+    where,
     orderBy: { createdAt: 'desc' },
-    include: {
-      cities: { orderBy: { position: 'asc' } },
-      days: {
-        orderBy: { date: 'asc' },
-        include: { activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } }, city: true },
-      },
-      checklist: true,
-      expenses: true,
-      media: true,
-      ideas: true,
-      bookings: true,
-    },
+    include: tripInclude,
   });
   await Promise.all(trips.map((trip) => ensureTripDays(trip)));
-  const withParsedCities = trips.map((trip) => ({
-    ...trip,
-    days: trip.days.map((day) => ({
-      ...day,
-      cityIds: day.cityIdsJson ? JSON.parse(day.cityIdsJson) : (day.cityId ? [day.cityId] : []),
-    })),
-  }));
-
-  res.json(withParsedCities);
+  res.json(trips.map(parseTripCities));
 }));
 
 app.post('/trips', asyncHandler(async (req, res) => {
@@ -83,6 +179,8 @@ app.post('/trips', asyncHandler(async (req, res) => {
       startDate: startDate ? new Date(startDate) : null,
       endDate: endDate ? new Date(endDate) : null,
       homeTimeZone: homeTimeZone || null,
+      ownerId: req.userId || null,
+      memberships: req.userId ? { create: { userId: req.userId, role: 'owner' } } : undefined,
     },
   });
 
@@ -91,23 +189,18 @@ app.post('/trips', asyncHandler(async (req, res) => {
 
 app.get('/trips/:id', asyncHandler(async (req, res) => {
   const tripId = Number(req.params.id);
-  const trip = await prisma.trip.findUnique({
-    where: { id: tripId },
-    include: {
-      cities: { orderBy: { position: 'asc' } },
-      days: {
-        orderBy: { date: 'asc' },
-        include: {
-          activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } },
-          city: true,
-        },
-      },
-      checklist: true,
-      expenses: true,
-      media: true,
-      ideas: true,
-      bookings: true,
-    },
+  const accessFilter = req.userId
+    ? {
+        id: tripId,
+        OR: [
+          { ownerId: req.userId },
+          { memberships: { some: { userId: req.userId } } },
+        ],
+      }
+    : { id: tripId };
+  const trip = await prisma.trip.findFirst({
+    where: accessFilter,
+    include: tripInclude,
   });
 
   if (!trip) {
@@ -116,36 +209,12 @@ app.get('/trips/:id', asyncHandler(async (req, res) => {
 
   await ensureTripDays(trip);
 
-  const refreshed = await prisma.trip.findUnique({
-    where: { id: tripId },
-    include: {
-      cities: { orderBy: { position: 'asc' } },
-      days: {
-        orderBy: { date: 'asc' },
-        include: {
-          activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } },
-          city: true,
-        },
-      },
-      checklist: true,
-      expenses: true,
-      media: true,
-      ideas: true,
-      bookings: true,
-    },
+  const refreshed = await prisma.trip.findFirst({
+    where: accessFilter,
+    include: tripInclude,
   });
 
-  const parsed = refreshed
-    ? {
-        ...refreshed,
-        days: refreshed.days.map((day) => ({
-          ...day,
-          cityIds: day.cityIdsJson ? JSON.parse(day.cityIdsJson) : (day.cityId ? [day.cityId] : []),
-        })),
-      }
-    : null;
-
-  res.json(parsed);
+  res.json(refreshed ? parseTripCities(refreshed) : null);
 }));
 
 app.post('/trips/:id/days', asyncHandler(async (req, res) => {
