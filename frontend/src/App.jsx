@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { addDays, differenceInCalendarDays, format } from 'date-fns';
-import { Routes, Route, useLocation, Link as RouterLink } from 'react-router-dom';
+import { Routes, Route, useLocation, useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Badge,
   Box,
@@ -327,6 +327,8 @@ function parsePlaceLink(raw) {
 
 function App() {
   const location = useLocation();
+  const params = useParams();
+  const navigate = useNavigate();
   const [trip, setTrip] = useState(fallbackTrip);
   const [trips, setTrips] = useState([]);
   const [user, setUser] = useState(null);
@@ -415,8 +417,10 @@ function App() {
       setError(null);
       const tripsResp = await fetchTripsApi();
       setTrips(Array.isArray(tripsResp) ? tripsResp : []);
+      const idParam = params?.tripId ? Number(params.tripId) : null;
       if (Array.isArray(tripsResp) && tripsResp.length > 0) {
-        const firstTrip = trip && tripsResp.find((t) => t.id === trip.id) ? trip : tripsResp[0];
+        const desired = idParam ? tripsResp.find((t) => t.id === idParam) : null;
+        const firstTrip = desired || (trip && tripsResp.find((t) => t.id === trip.id)) || tripsResp[0];
         setTrip(firstTrip);
         setCities(firstTrip.cities || []);
         setSelectedDayId(firstTrip.days?.[0]?.id || null);
@@ -619,9 +623,7 @@ function App() {
       });
       await loadTrips();
       if (created?.id) {
-        const match = (trips || []).find((t) => t.id === created.id);
-        const nextTrip = match || created;
-        setTrip(nextTrip);
+        navigate(`/trip/${created.id}`);
       }
       tripModal.onClose();
       setTripForm({ name: '', startDate: '', endDate: '' });
@@ -1182,10 +1184,41 @@ function App() {
     );
   }
 
-  return (
-    <Container maxW="6xl" py={{ base: 8, md: 12 }}>
-      <Stack spacing={6}>
-        <Stack spacing={3}>
+  const isTripRoute = params?.tripId;
+
+  const navBar = (activeTripId) => (
+    <ButtonGroup variant="ghost" spacing={2} mb={4}>
+      {[
+        { label: 'Dashboard', path: `/trip/${activeTripId}` },
+        { label: 'Calendar', path: `/trip/${activeTripId}/calendar` },
+        { label: 'Places', path: `/trip/${activeTripId}/places` },
+        { label: 'Ideas', path: `/trip/${activeTripId}/ideas` },
+      ].map((item) => {
+        const normalizedPath = location.pathname.replace(/\\/+/g, '/').replace(/\\/$/, '') || '/';
+        const active = normalizedPath === item.path || normalizedPath.startsWith(`${item.path}`);
+        return (
+          <Button
+            key={item.path}
+            as={RouterLink}
+            to={item.path}
+            px={4}
+            py={2}
+            borderRadius="md"
+            bg={active ? 'indigo.600' : 'whiteAlpha.100'}
+            color={active ? 'white' : 'whiteAlpha.800'}
+            _hover={{ bg: 'whiteAlpha.200' }}
+          >
+            {item.label}
+          </Button>
+        );
+      })}
+    </ButtonGroup>
+  );
+
+  if (!isTripRoute) {
+    return (
+      <Container maxW="6xl" py={{ base: 8, md: 12 }}>
+        <Flex justify="space-between" align="center" mb={4} wrap="wrap" gap={3}>
           <HStack spacing={3}>
             <Badge colorScheme="brand" px={3} py={1} borderRadius="full">
               Trip Companion
@@ -1193,12 +1226,91 @@ function App() {
             <Tag colorScheme={status.includes('Live') ? 'green' : 'purple'} variant="subtle">
               {status}
             </Tag>
-            {currentRole && (
-              <Tag colorScheme={currentRole === 'viewer' ? 'yellow' : 'green'} variant="subtle">
-                Role: {currentRole}
-              </Tag>
-            )}
           </HStack>
+          {user ? (
+            <HStack spacing={3}>
+              <Tag colorScheme="green" variant="subtle">
+                {user.email}
+              </Tag>
+              <Button size="sm" onClick={handleLogout}>
+                Logout
+              </Button>
+            </HStack>
+          ) : null}
+        </Flex>
+        <Stack spacing={6}>
+          <Heading size="xl">Your trips</Heading>
+          {trips.length > 0 ? (
+            <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
+              <CardBody>
+                <Stack spacing={3}>
+                  {trips.map((t) => (
+                    <Flex key={`triplist-${t.id}`} align="center" justify="space-between" p={3} borderRadius="12px" bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.08)">
+                      <Box>
+                        <Text fontWeight="semibold">{t.name}</Text>
+                        <Text color="whiteAlpha.700" fontSize="sm">
+                          {t.startDate ? format(new Date(t.startDate), 'MMM d') : 'No dates'} {t.endDate ? `– ${format(new Date(t.endDate), 'MMM d')}` : ''}
+                        </Text>
+                      </Box>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setTrip(t);
+                          setCities(t.cities || []);
+                          setSelectedDayId(t.days?.[0]?.id || null);
+                          setSelectedDayDate(t.days?.[0]?.date || t.startDate || '');
+                          navigate(`/trip/${t.id}`);
+                        }}
+                      >
+                        Open
+                      </Button>
+                    </Flex>
+                  ))}
+                </Stack>
+              </CardBody>
+            </Card>
+          ) : (
+            <Text color="whiteAlpha.700">No trips yet.</Text>
+          )}
+          <Button size="md" onClick={tripModal.onOpen}>
+            + New trip
+          </Button>
+        </Stack>
+      </Container>
+    );
+  }
+
+  const activeTripId = params.tripId || (trip?.id ? String(trip.id) : '');
+
+  return (
+    <Container maxW="6xl" py={{ base: 8, md: 12 }}>
+      <Flex justify="space-between" align="center" mb={4} wrap="wrap" gap={3}>
+        <HStack spacing={3}>
+          <Badge colorScheme="brand" px={3} py={1} borderRadius="full">
+            Trip Companion
+          </Badge>
+          <Tag colorScheme={status.includes('Live') ? 'green' : 'purple'} variant="subtle">
+            {status}
+          </Tag>
+          {currentRole && (
+            <Tag colorScheme={currentRole === 'viewer' ? 'yellow' : 'green'} variant="subtle">
+              Role: {currentRole}
+            </Tag>
+          )}
+        </HStack>
+        {user ? (
+          <HStack spacing={3}>
+            <Tag colorScheme="green" variant="subtle">
+              {user.email}
+            </Tag>
+            <Button size="sm" onClick={handleLogout}>
+              Logout
+            </Button>
+          </HStack>
+        ) : null}
+      </Flex>
+      <Stack spacing={6}>
+        <Stack spacing={3}>
           <Heading size="2xl" letterSpacing="-0.5px">
             {trip?.name || 'Your adventure'}
           </Heading>
@@ -1242,6 +1354,7 @@ function App() {
                           setCities(t.cities || []);
                           setSelectedDayId(t.days?.[0]?.id || null);
                           setSelectedDayDate(t.days?.[0]?.date || t.startDate || '');
+                          navigate(`/trip/${t.id}`);
                         }}
                       >
                         Open
@@ -1252,78 +1365,7 @@ function App() {
               </CardBody>
             </Card>
           )}
-          <HStack spacing={2} wrap="wrap">
-            <Button
-              size="sm"
-              variant={cityFilter === null ? 'solid' : 'ghost'}
-              bg={cityFilter === null ? 'whiteAlpha.300' : 'whiteAlpha.200'}
-              color={cityFilter === null ? '#0c0c0c' : 'white'}
-              _hover={{ bg: 'whiteAlpha.300' }}
-              onClick={() => setCityFilter(null)}
-            >
-              All cities
-            </Button>
-            {(cities || []).map((city) => (
-              <Button
-                key={city.id}
-                size="sm"
-                variant={cityFilter === city.id ? 'solid' : 'ghost'}
-                bg={cityFilter === city.id ? cityColorMap.get(city.id) || 'indigo.600' : 'whiteAlpha.200'}
-                color={cityFilter === city.id ? '#0c0c0c' : 'white'}
-                _hover={{ bg: 'whiteAlpha.300' }}
-                onClick={() => setCityFilter(cityFilter === city.id ? null : city.id)}
-              >
-                {city.name} {city.startDate ? `· ${format(new Date(city.startDate), 'MMM d')}` : ''}
-              </Button>
-            ))}
-            <Button size="sm" variant="ghost" onClick={() => cityModal.onOpen()}>
-              Manage cities
-            </Button>
-          </HStack>
-          <Stack spacing={2}>
-            {trip?.memberships?.length > 0 && (
-              <HStack spacing={2} wrap="wrap">
-                {trip.memberships.map((m) => (
-                  <Tag key={`member-${m.id}`} colorScheme={m.role === 'owner' ? 'green' : m.role === 'editor' ? 'indigo' : 'gray'} variant="subtle">
-                    {m.user?.email || 'user'} · {m.role}
-                  </Tag>
-                ))}
-              </HStack>
-            )}
-            <HStack spacing={2} wrap="wrap">
-              <Input
-                placeholder="Invite by email"
-                value={memberForm.email}
-                onChange={(e) => setMemberForm((f) => ({ ...f, email: e.target.value }))}
-                maxW="260px"
-              />
-              <Select
-                value={memberForm.role}
-                onChange={(e) => setMemberForm((f) => ({ ...f, role: e.target.value }))}
-                maxW="180px"
-              >
-                <option value="editor">Editor</option>
-                <option value="viewer">Viewer</option>
-              </Select>
-              <Button size="sm" onClick={handleAddMember} isDisabled={!trip?.id}>
-                Add/Update member
-              </Button>
-            </HStack>
-          </Stack>
-          <HStack spacing={3} flexWrap="wrap">
-            <Button size="md" onClick={tripModal.onOpen}>
-              + New trip
-            </Button>
-            <Button size="md" variant="ghost" onClick={dayModal.onOpen} isDisabled={!canEditTrip}>
-              + Add day
-            </Button>
-            <Button size="md" variant="ghost" onClick={activityModal.onOpen} isDisabled={!canEditTrip}>
-              + Add activity
-            </Button>
-            <Button size="md" variant="ghost" onClick={expenseModal.onOpen} isDisabled={!canEditTrip}>
-              + Add expense
-            </Button>
-          </HStack>
+          {navBar(activeTripId)}
         </Stack>
 
         <Box>
