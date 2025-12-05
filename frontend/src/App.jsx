@@ -473,6 +473,12 @@ function App() {
       return;
     }
     try {
+      let dayIdToUse = bookingForm.dayId;
+      if (dayIdToUse && String(dayIdToUse).startsWith('date:')) {
+        const iso = String(dayIdToUse).replace('date:', '');
+        const newDay = await createDay(trip.id, { date: iso, title: null, cityId: bookingForm.cityId ? Number(bookingForm.cityId) : cityFilter || null });
+        dayIdToUse = newDay.id;
+      }
       await createBooking(trip.id, {
         title: bookingForm.title,
         type: bookingForm.type || null,
@@ -481,7 +487,7 @@ function App() {
         confirmationCode: bookingForm.confirmationCode || null,
         link: bookingForm.link || null,
         note: bookingForm.note || null,
-        dayId: bookingForm.dayId ? Number(bookingForm.dayId) : null,
+        dayId: dayIdToUse ? Number(dayIdToUse) : null,
         cityId: bookingForm.cityId ? Number(bookingForm.cityId) : null,
       });
       await loadTrips();
@@ -703,8 +709,14 @@ function App() {
       return;
     }
     try {
+      let dayToUse = placePromote.dayId;
+      if (String(dayToUse).startsWith('date:')) {
+        const iso = String(dayToUse).replace('date:', '');
+        const newDay = await createDay(trip.id, { date: iso, title: null, cityId: placePromote.cityId || null });
+        dayToUse = newDay.id;
+      }
       await promotePlace(placePromote.placeId, {
-        dayId: Number(placePromote.dayId),
+        dayId: Number(dayToUse),
         startTime: placePromote.startTime || null,
         location: placePromote.location || null,
         category: placePromote.category || null,
@@ -782,8 +794,14 @@ function App() {
       return;
     }
     try {
+      let dayToUse = ideaPromote.dayId;
+      if (String(dayToUse).startsWith('date:')) {
+        const iso = String(dayToUse).replace('date:', '');
+        const newDay = await createDay(trip.id, { date: iso, title: null, cityId: cityFilter || null });
+        dayToUse = newDay.id;
+      }
       await promoteIdea(ideaPromote.ideaId, {
-        dayId: Number(ideaPromote.dayId),
+        dayId: Number(dayToUse),
         startTime: ideaPromote.startTime || null,
         location: ideaPromote.location || null,
         category: ideaPromote.category || null,
@@ -2066,9 +2084,9 @@ function App() {
                   value={ideaPromote.dayId}
                   onChange={(e) => setIdeaPromote((f) => ({ ...f, dayId: e.target.value }))}
                 >
-                  {(sortedDays || []).map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {formatDate(d.date)} — {d.title || 'Untitled day'}
+                  {dayOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
                     </option>
                   ))}
                 </Select>
@@ -2124,9 +2142,9 @@ function App() {
                   value={placePromote.dayId}
                   onChange={(e) => setPlacePromote((f) => ({ ...f, dayId: e.target.value }))}
                 >
-                  {(sortedDays || []).map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {formatDate(d.date)} — {d.title || 'Untitled day'}
+                  {dayOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
                     </option>
                   ))}
                 </Select>
@@ -2238,9 +2256,9 @@ function App() {
                   value={bookingForm.dayId}
                   onChange={(e) => setBookingForm((f) => ({ ...f, dayId: e.target.value }))}
                 >
-                  {(sortedDays || []).map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {formatDate(d.date)} — {d.title || 'Untitled day'}
+                  {dayOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
                     </option>
                   ))}
                 </Select>

@@ -491,7 +491,7 @@ const PlacesBoard = ({
                               color="black"
                               onChange={(e) => {
                                 const val = e.target.value;
-                                if (val) onQuickPromote(place, Number(val));
+                                if (val) onQuickPromote(place, val);
                               }}
                             >
                               {dayOptions.map((d) => (

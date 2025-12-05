@@ -26,7 +26,7 @@ app.get('/trips', asyncHandler(async (_req, res) => {
       cities: { orderBy: { position: 'asc' } },
       days: {
         orderBy: { date: 'asc' },
-        include: { activities: { include: { city: true } }, city: true },
+        include: { activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } }, city: true },
       },
       checklist: true,
       expenses: true,
@@ -65,7 +65,7 @@ app.get('/trips/:id', asyncHandler(async (req, res) => {
       days: {
         orderBy: { date: 'asc' },
         include: {
-          activities: { orderBy: { startTime: 'asc' }, include: { city: true } },
+          activities: { orderBy: [{ position: 'asc' }, { startTime: 'asc' }], include: { city: true } },
           city: true,
         },
       },
