@@ -1194,7 +1194,7 @@ function App() {
         { label: 'Places', path: `/trip/${activeTripId}/places` },
         { label: 'Ideas', path: `/trip/${activeTripId}/ideas` },
       ].map((item) => {
-        const normalizedPath = location.pathname.replace(/\\/+/g, '/').replace(/\\/$/, '') || '/';
+        const normalizedPath = (location.pathname || '/').replace(/\/+$/, '') || '/';
         const active = normalizedPath === item.path || normalizedPath.startsWith(`${item.path}`);
         return (
           <Button
