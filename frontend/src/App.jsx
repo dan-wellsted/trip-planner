@@ -1829,7 +1829,7 @@ function App() {
                   onChange={(e) => setActivityForm((f) => ({ ...f, title: e.target.value }))}
                 />
               </FormControl>
-              <HStack>
+              <Stack direction={{ base: 'column', md: 'row' }} spacing={3}>
                 <FormControl>
                   <FormLabel>Start time</FormLabel>
                   <Input
@@ -1846,8 +1846,8 @@ function App() {
                     onChange={(e) => setActivityForm((f) => ({ ...f, endTime: e.target.value }))}
                   />
                 </FormControl>
-              </HStack>
-              <HStack>
+              </Stack>
+              <Stack direction={{ base: 'column', md: 'row' }} spacing={3}>
                 <FormControl>
                   <FormLabel>Location</FormLabel>
                   <Input
@@ -1864,7 +1864,7 @@ function App() {
                     onChange={(e) => setActivityForm((f) => ({ ...f, category: e.target.value }))}
                   />
                 </FormControl>
-              </HStack>
+              </Stack>
               <FormControl>
                 <FormLabel>City</FormLabel>
                 <Select
