@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { addDays, differenceInCalendarDays, format } from 'date-fns';
-import { Routes, Route, useLocation, useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Badge,
   Box,
@@ -327,7 +327,6 @@ function parsePlaceLink(raw) {
 
 function App() {
   const location = useLocation();
-  const params = useParams();
   const navigate = useNavigate();
   const [trip, setTrip] = useState(fallbackTrip);
   const [trips, setTrips] = useState([]);
@@ -400,6 +399,11 @@ function App() {
   const [memberForm, setMemberForm] = useState({ email: '', role: 'editor' });
   const toast = useToast();
 
+  const tripIdFromPath = useMemo(() => {
+    const match = location.pathname.match(/\/trip\/(\d+)/);
+    return match ? Number(match[1]) : null;
+  }, [location.pathname]);
+
   const loadTrips = async () => {
     const safeSetError = (msg) => setError((prev) => prev || msg);
     const safeFetch = async (label, fn) => {
@@ -417,7 +421,7 @@ function App() {
       setError(null);
       const tripsResp = await fetchTripsApi();
       setTrips(Array.isArray(tripsResp) ? tripsResp : []);
-      const idParam = params?.tripId ? Number(params.tripId) : null;
+      const idParam = tripIdFromPath;
       if (Array.isArray(tripsResp) && tripsResp.length > 0) {
         const desired = idParam ? tripsResp.find((t) => t.id === idParam) : null;
         const firstTrip = desired || (trip && tripsResp.find((t) => t.id === trip.id)) || tripsResp[0];
@@ -495,7 +499,7 @@ function App() {
       loadTrips();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, params.tripId]);
+  }, [user, tripIdFromPath]);
 
   useEffect(() => {
     try {
@@ -1191,7 +1195,7 @@ function App() {
     );
   }
 
-  const isTripRoute = params?.tripId;
+  const isTripRoute = Boolean(tripIdFromPath);
 
   const navBar = (activeTripId) => (
     <ButtonGroup variant="ghost" spacing={2} mb={4}>
@@ -1287,7 +1291,7 @@ function App() {
     );
   }
 
-  const activeTripId = params.tripId || (trip?.id ? String(trip.id) : '');
+  const activeTripId = tripIdFromPath || (trip?.id ? String(trip.id) : '');
 
   return (
     <Container maxW="6xl" py={{ base: 8, md: 12 }}>
