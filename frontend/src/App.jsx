@@ -1421,7 +1421,6 @@ function App() {
             })}
           </ButtonGroup>
           <Routes>
-          <Routes>
             <Route
               path="/trip/:tripId"
               element={
