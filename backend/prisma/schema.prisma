@@ -52,6 +52,8 @@ model TripMembership {
 
   trip   Trip @relation(fields: [tripId], references: [id])
   tripId Int
+
+  @@unique([tripId, userId])
 }
 
 model City {

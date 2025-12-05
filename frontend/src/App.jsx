@@ -71,6 +71,11 @@ import {
   deletePlace,
   promotePlace,
   updateDay,
+  register,
+  login,
+  logout as apiLogout,
+  me as fetchMe,
+  addTripMember,
 } from './api';
 import BookingsCard from './components/BookingsCard';
 import IdeasBoard from './components/IdeasBoard';
@@ -323,6 +328,7 @@ function parsePlaceLink(raw) {
 function App() {
   const location = useLocation();
   const [trip, setTrip] = useState(fallbackTrip);
+  const [user, setUser] = useState(null);
   const [status, setStatus] = useState('Offline demo data');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -387,6 +393,8 @@ function App() {
   const [undoPlace, setUndoPlace] = useState(null);
   const [undoTimer, setUndoTimer] = useState(null);
   const [quickPlaceAdd, setQuickPlaceAdd] = useState({});
+  const [authForm, setAuthForm] = useState({ email: '', password: '', name: '', mode: 'login' });
+  const [memberForm, setMemberForm] = useState({ email: '', role: 'editor' });
   const toast = useToast();
 
   const loadTrips = async () => {
@@ -433,15 +441,39 @@ function App() {
         setSelectedDayDate('');
       }
     } catch (err) {
-      console.warn('Falling back to demo data', err);
-      setStatus('Offline demo data');
-      setError('API unavailable, showing demo data.');
-      setSelectedDayId(fallbackTrip.days?.[0]?.id || null);
-      setSelectedDayDate(fallbackTrip.days?.[0]?.date || fallbackTrip.startDate || '');
+      if (err?.status === 401) {
+        setStatus('Login to view your trips');
+        setTrip(null);
+        setCities([]);
+        setBookings([]);
+        setIdeas([]);
+        setPlaces([]);
+        setSelectedDayId(null);
+        setSelectedDayDate('');
+      } else {
+        console.warn('Falling back to demo data', err);
+        setStatus('Offline demo data');
+        setError('API unavailable, showing demo data.');
+        setSelectedDayId(fallbackTrip.days?.[0]?.id || null);
+        setSelectedDayDate(fallbackTrip.days?.[0]?.date || fallbackTrip.startDate || '');
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const meResp = await fetchMe();
+        setUser(meResp);
+      } catch (err) {
+        setUser(null);
+      } finally {
+        loadTrips();
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     try {
@@ -463,6 +495,55 @@ function App() {
       localStorage.setItem('placeFavorites', JSON.stringify(ids));
     } catch (err) {
       console.warn('Failed to persist favorites', err);
+    }
+  };
+
+  const handleAuthSubmit = async () => {
+    if (!authForm.email || !authForm.password) {
+      toast({ status: 'warning', title: 'Email and password required' });
+      return;
+    }
+    try {
+      if (authForm.mode === 'register') {
+        await register({ email: authForm.email, password: authForm.password, name: authForm.name || null });
+      } else {
+        await login({ email: authForm.email, password: authForm.password });
+      }
+      const meResp = await fetchMe();
+      setUser(meResp);
+      toast({ status: 'success', title: authForm.mode === 'register' ? 'Registered' : 'Logged in' });
+      await loadTrips();
+    } catch (err) {
+      toast({ status: 'error', title: 'Auth failed', description: err.message || 'Unable to sign in' });
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiLogout();
+    } catch (err) {
+      // ignore
+    }
+    setUser(null);
+    await loadTrips();
+  };
+
+  const handleAddMember = async () => {
+    if (!trip?.id) {
+      toast({ status: 'warning', title: 'Create a trip first' });
+      return;
+    }
+    if (!memberForm.email) {
+      toast({ status: 'warning', title: 'Email required' });
+      return;
+    }
+    try {
+      await addTripMember(trip.id, { email: memberForm.email, role: memberForm.role || 'editor' });
+      toast({ status: 'success', title: 'Member added/updated' });
+      setMemberForm({ email: '', role: 'editor' });
+      await loadTrips();
+    } catch (err) {
+      toast({ status: 'error', title: 'Failed to add member', description: err.message });
     }
   };
 
@@ -504,10 +585,6 @@ function App() {
   const visibleDays = cityFilter
     ? sortedDays.filter((d) => (Array.isArray(d.cityIds) ? d.cityIds.includes(cityFilter) : d.cityId === cityFilter))
     : sortedDays;
-
-  useEffect(() => {
-    loadTrips();
-  }, []);
 
   const handleCreateTrip = async () => {
     if (!tripForm.name) {
@@ -1070,6 +1147,54 @@ function App() {
               Loading live data…
             </Text>
           )}
+          <Box bg="whiteAlpha.100" p={3} borderRadius="12px" border="1px solid rgba(255,255,255,0.08)">
+            {user ? (
+              <HStack justify="space-between" align="center">
+                <HStack>
+                  <Tag colorScheme="green" variant="subtle">
+                    {user.email}
+                  </Tag>
+                  <Text color="whiteAlpha.700" fontSize="sm">
+                    Signed in
+                  </Text>
+                </HStack>
+                <Button size="sm" onClick={handleLogout}>
+                  Logout
+                </Button>
+              </HStack>
+            ) : (
+              <Stack direction={{ base: 'column', md: 'row' }} spacing={3}>
+                <Input
+                  placeholder="Email"
+                  value={authForm.email}
+                  onChange={(e) => setAuthForm((f) => ({ ...f, email: e.target.value }))}
+                />
+                <Input
+                  type="password"
+                  placeholder="Password"
+                  value={authForm.password}
+                  onChange={(e) => setAuthForm((f) => ({ ...f, password: e.target.value }))}
+                />
+                {authForm.mode === 'register' && (
+                  <Input
+                    placeholder="Name (optional)"
+                    value={authForm.name}
+                    onChange={(e) => setAuthForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                )}
+                <Button size="sm" onClick={handleAuthSubmit}>
+                  {authForm.mode === 'register' ? 'Register' : 'Login'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setAuthForm((f) => ({ ...f, mode: f.mode === 'register' ? 'login' : 'register' }))}
+                >
+                  Switch to {authForm.mode === 'register' ? 'Login' : 'Register'}
+                </Button>
+              </Stack>
+            )}
+          </Box>
           <HStack spacing={2} wrap="wrap">
             <Button
               size="sm"
@@ -1098,6 +1223,36 @@ function App() {
               Manage cities
             </Button>
           </HStack>
+          <Stack spacing={2}>
+            {trip?.memberships?.length > 0 && (
+              <HStack spacing={2} wrap="wrap">
+                {trip.memberships.map((m) => (
+                  <Tag key={`member-${m.id}`} colorScheme={m.role === 'owner' ? 'green' : m.role === 'editor' ? 'indigo' : 'gray'} variant="subtle">
+                    {m.user?.email || 'user'} · {m.role}
+                  </Tag>
+                ))}
+              </HStack>
+            )}
+            <HStack spacing={2} wrap="wrap">
+              <Input
+                placeholder="Invite by email"
+                value={memberForm.email}
+                onChange={(e) => setMemberForm((f) => ({ ...f, email: e.target.value }))}
+                maxW="260px"
+              />
+              <Select
+                value={memberForm.role}
+                onChange={(e) => setMemberForm((f) => ({ ...f, role: e.target.value }))}
+                maxW="180px"
+              >
+                <option value="editor">Editor</option>
+                <option value="viewer">Viewer</option>
+              </Select>
+              <Button size="sm" onClick={handleAddMember} isDisabled={!trip?.id}>
+                Add/Update member
+              </Button>
+            </HStack>
+          </Stack>
           <HStack spacing={3} flexWrap="wrap">
             <Button size="md" onClick={tripModal.onOpen}>
               + New trip
