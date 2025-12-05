@@ -590,6 +590,13 @@ function App() {
     return mem?.role || null;
   }, [trip, user]);
   const canEditTrip = !user || !trip ? true : currentRole !== 'viewer';
+  const requireEditor = () => {
+    if (!canEditTrip) {
+      toast({ status: 'warning', title: 'View-only access', description: 'You do not have edit rights on this trip.' });
+      return false;
+    }
+    return true;
+  };
 
   const sortedDays = (trip?.days || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
 
@@ -654,6 +661,7 @@ function App() {
   };
 
   const handleCreateBooking = async () => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -714,6 +722,7 @@ function App() {
   };
 
   const handleCreateOrUpdateIdea = async () => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -752,6 +761,7 @@ function App() {
   };
 
   const handleDeleteIdea = async (id) => {
+    if (!requireEditor()) return;
     try {
       await deleteIdea(id);
       const fetchedIdeas = await fetchIdeas(trip.id);
@@ -764,6 +774,7 @@ function App() {
   };
 
   const handleCreateOrUpdateCity = async () => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -805,6 +816,7 @@ function App() {
   };
 
   const handleDeleteCity = async (cityId) => {
+    if (!requireEditor()) return;
     try {
       await deleteCity(cityId);
       const fetched = await fetchCities(trip.id);
@@ -819,6 +831,7 @@ function App() {
   };
 
   const handleReorderCities = async (movingId, overId) => {
+    if (!requireEditor()) return;
     const current = [...cities];
     const oldIndex = current.findIndex((c) => c.id === movingId);
     const newIndex = current.findIndex((c) => c.id === overId);
@@ -1035,6 +1048,7 @@ function App() {
   };
 
   const handleCreateDay = async () => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -1068,6 +1082,7 @@ function App() {
   };
 
   const handleCreateActivity = async () => {
+    if (!requireEditor()) return;
     if (!selectedDayId && !selectedDayDate) {
       toast({ status: 'warning', title: 'Select a day first' });
       return;
@@ -1102,6 +1117,7 @@ function App() {
   };
 
   const handleUpdateActivity = async () => {
+    if (!requireEditor()) return;
     if (!editingActivityId) return;
     try {
       await updateActivity(editingActivityId, {
@@ -1123,6 +1139,7 @@ function App() {
   };
 
   const handleDeleteActivity = async (activityId) => {
+    if (!requireEditor()) return;
     try {
       await deleteActivity(activityId);
       await loadTrips();
