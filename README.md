@@ -92,3 +92,11 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - Lodging timeline: show all stays on a horizontal timeline to catch gaps/overlaps.
 - Nearby recs: suggest spots near bookings/activities and surfacing open-now options.
 - Driving/transit estimates: mode selection with time + cost estimates and “leave by” callouts.
+
+## Site structure (outline to refine)
+- Dashboard: hero + day timeline, checklist, spend, bookings, moments, quick auth status.
+- Calendar: grid of days with activities, add/edit modals.
+- Places: list + map with filters, paste link intake, promote to day.
+- Ideas: board with drag ordering, promote/save-as-place.
+- Cities: manager modal for trip stops.
+- Auth: inline login/register bar; invite members (owner/editor/viewer) to shared trips.

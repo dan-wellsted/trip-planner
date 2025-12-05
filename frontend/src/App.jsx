@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { addDays, differenceInCalendarDays, format } from 'date-fns';
 import { Routes, Route, useLocation, Link as RouterLink } from 'react-router-dom';
 import {
@@ -546,6 +546,14 @@ function App() {
       toast({ status: 'error', title: 'Failed to add member', description: err.message });
     }
   };
+
+  const currentRole = useMemo(() => {
+    if (!user || !trip) return null;
+    if (trip.ownerId && trip.ownerId === user.id) return 'owner';
+    const mem = (trip.memberships || []).find((m) => m.userId === user.id);
+    return mem?.role || null;
+  }, [trip, user]);
+  const canEditTrip = !user || !trip ? true : currentRole !== 'viewer';
 
   const sortedDays = (trip?.days || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
 
@@ -1130,6 +1138,11 @@ function App() {
             <Tag colorScheme={status.includes('Live') ? 'green' : 'purple'} variant="subtle">
               {status}
             </Tag>
+            {currentRole && (
+              <Tag colorScheme={currentRole === 'viewer' ? 'yellow' : 'green'} variant="subtle">
+                Role: {currentRole}
+              </Tag>
+            )}
           </HStack>
           <Heading size="2xl" letterSpacing="-0.5px">
             {trip?.name || 'Your adventure'}
@@ -1257,13 +1270,13 @@ function App() {
             <Button size="md" onClick={tripModal.onOpen}>
               + New trip
             </Button>
-            <Button size="md" variant="ghost" onClick={dayModal.onOpen}>
+            <Button size="md" variant="ghost" onClick={dayModal.onOpen} isDisabled={!canEditTrip}>
               + Add day
             </Button>
-            <Button size="md" variant="ghost" onClick={activityModal.onOpen}>
+            <Button size="md" variant="ghost" onClick={activityModal.onOpen} isDisabled={!canEditTrip}>
               + Add activity
             </Button>
-            <Button size="md" variant="ghost" onClick={expenseModal.onOpen}>
+            <Button size="md" variant="ghost" onClick={expenseModal.onOpen} isDisabled={!canEditTrip}>
               + Add expense
             </Button>
           </HStack>
