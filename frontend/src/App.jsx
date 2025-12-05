@@ -1935,58 +1935,59 @@ function App() {
 
             <Route
               path="/trip/:tripId/ideas"
-              element={
+              element={(
                 <IdeasBoard
-                ideas={ideas}
-                cities={cities}
-                cityFilter={cityFilter}
-                onFilterChange={(id) => setCityFilter(id)}
-                onAddClick={(idea) => {
-                  if (idea) {
-                    setEditingIdeaId(idea.id);
-                    setIdeaForm({
-                      title: idea.title || '',
-                      link: idea.link || '',
-                      note: idea.note || '',
+                  ideas={ideas}
+                  cities={cities}
+                  cityFilter={cityFilter}
+                  onFilterChange={(id) => setCityFilter(id)}
+                  onAddClick={(idea) => {
+                    if (idea) {
+                      setEditingIdeaId(idea.id);
+                      setIdeaForm({
+                        title: idea.title || '',
+                        link: idea.link || '',
+                        note: idea.note || '',
+                        category: idea.category || '',
+                        cityId: idea.cityId || '',
+                      });
+                    } else {
+                      setEditingIdeaId(null);
+                      setIdeaForm({ title: '', link: '', note: '', category: '', cityId: '' });
+                    }
+                    ideaModal.onOpen();
+                  }}
+                  onDelete={handleDeleteIdea}
+                  onPromote={(idea) => {
+                    setIdeaPromote({
+                      ideaId: idea.id,
+                      dayId: '',
+                      startTime: '',
+                      location: '',
                       category: idea.category || '',
-                      cityId: idea.cityId || '',
                     });
-                  } else {
-                    setEditingIdeaId(null);
-                    setIdeaForm({ title: '', link: '', note: '', category: '', cityId: '' });
-                  }
-                  ideaModal.onOpen();
-                }}
-                onDelete={handleDeleteIdea}
-                onPromote={(idea) => {
-                  setIdeaPromote({
-                    ideaId: idea.id,
-                    dayId: '',
-                    startTime: '',
-                    location: '',
-                    category: idea.category || '',
-                  });
-                  promoteIdeaModal.onOpen();
-                }}
-                onReorder={(movingId, beforeId) => {
-                  if (!trip?.id) return;
-                  const order = ideas
-                    .slice()
-                    .map((i) => i.id)
-                    .filter((id) => id !== movingId);
-                  const insertIndex = order.indexOf(beforeId);
-                  if (insertIndex === -1) {
-                    order.push(movingId);
-                  } else {
-                    order.splice(insertIndex, 0, movingId);
-                  }
+                    promoteIdeaModal.onOpen();
+                  }}
+                  onReorder={(movingId, beforeId) => {
+                    if (!trip?.id) return;
+                    const order = ideas
+                      .slice()
+                      .map((i) => i.id)
+                      .filter((id) => id !== movingId);
+                    const insertIndex = order.indexOf(beforeId);
+                    if (insertIndex === -1) {
+                      order.push(movingId);
+                    } else {
+                      order.splice(insertIndex, 0, movingId);
+                    }
                     reorderIdeas(trip.id, order)
                       .then((updated) => setIdeas(updated))
                       .catch((err) => toast({ status: 'error', title: 'Failed to reorder ideas', description: err.message }));
-                }}
-                onSaveAsPlace={handleSaveIdeaAsPlace}
-              />
-            </Route>
+                  }}
+                  onSaveAsPlace={handleSaveIdeaAsPlace}
+                />
+              )}
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Box>
