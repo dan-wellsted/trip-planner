@@ -227,6 +227,51 @@ function activityDurationMinutes(activity) {
   return 60;
 }
 
+function toNumber(val) {
+  const num = Number(val);
+  return Number.isFinite(num) ? num : null;
+}
+
+function haversineDistanceKm(a, b) {
+  const lat1 = toNumber(a?.lat);
+  const lon1 = toNumber(a?.lng);
+  const lat2 = toNumber(b?.lat);
+  const lon2 = toNumber(b?.lng);
+  if (lat1 === null || lon1 === null || lat2 === null || lon2 === null) return null;
+  const R = 6371; // km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const aVal =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
+  return R * c;
+}
+
+function estimateTravelMinutes(prev, next) {
+  if (!prev || !next) return 0;
+  const km = haversineDistanceKm(prev, next);
+  if (km !== null) {
+    if (km < 0.8) return 10;
+    if (km < 3) return 18;
+    if (km < 10) return 32;
+    if (km < 30) return 60;
+    if (km < 75) return 95;
+    return 120;
+  }
+  if (prev.cityId && next.cityId && prev.cityId === next.cityId) return 20;
+  return 45;
+}
+
+function computeLeaveBy(prev, next, travelMinutes) {
+  if (!prev?.startTime || !next?.startTime) return '';
+  const travel = Number.isFinite(travelMinutes) ? travelMinutes : estimateTravelMinutes(prev, next);
+  const nextStart = new Date(next.startTime);
+  const leaveBy = new Date(nextStart.getTime() - (travel || 0) * 60000);
+  const formatted = leaveBy.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return travel > 0 ? `Leave by ${formatted} to reach next stop` : '';
+}
+
 function parsePlaceLink(raw) {
   const cleaned = (raw || '').trim();
   if (!cleaned) return {};
@@ -1138,6 +1183,12 @@ function App() {
                             activities={day.activities || []}
                             cities={cities}
                             dayOverbooked={dayOverbooked}
+                            travelEstimate={(idx, acts) =>
+                              idx === 0 ? 0 : estimateTravelMinutes(acts[idx - 1], acts[idx])
+                            }
+                            leaveBy={(idx, acts, travelMinutes) =>
+                              idx === 0 ? '' : computeLeaveBy(acts[idx - 1], acts[idx], travelMinutes)
+                            }
                             onEdit={(act) => {
                               setSelectedDayId(day.id);
                               setEditingActivityId(act.id);
