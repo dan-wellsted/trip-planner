@@ -18,7 +18,7 @@ function formatCreated(value) {
   return format(date, 'dd MMM');
 }
 
-const IdeaItem = ({ idea, onPromote, onDelete, onEdit, dragging = false, cityLabel, cityColor }) => (
+const IdeaItem = ({ idea, onPromote, onDelete, onEdit, onSaveAsPlace, dragging = false, cityLabel, cityColor }) => (
   <Box
     p={3}
     borderRadius="12px"
@@ -66,6 +66,9 @@ const IdeaItem = ({ idea, onPromote, onDelete, onEdit, dragging = false, cityLab
       <Button size="xs" variant="ghost" onClick={onEdit} color="whiteAlpha.900">
         Edit
       </Button>
+      <Button size="xs" variant="ghost" onClick={onSaveAsPlace} color="whiteAlpha.900">
+        Save as place
+      </Button>
       {idea.status !== 'promoted' && (
         <Button size="xs" variant="ghost" onClick={onPromote} color="whiteAlpha.900">
           Promote to activity
@@ -78,7 +81,7 @@ const IdeaItem = ({ idea, onPromote, onDelete, onEdit, dragging = false, cityLab
   </Box>
 );
 
-const SortableIdea = ({ idea, onPromote, onDelete, onEdit, cityLabel, cityColor }) => {
+const SortableIdea = ({ idea, onPromote, onDelete, onEdit, onSaveAsPlace, cityLabel, cityColor }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: idea.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -92,6 +95,7 @@ const SortableIdea = ({ idea, onPromote, onDelete, onEdit, cityLabel, cityColor 
         onPromote={onPromote}
         onDelete={onDelete}
         onEdit={onEdit}
+        onSaveAsPlace={onSaveAsPlace}
         dragging={isDragging}
         cityLabel={cityLabel}
         cityColor={cityColor}
@@ -100,7 +104,17 @@ const SortableIdea = ({ idea, onPromote, onDelete, onEdit, cityLabel, cityColor 
   );
 };
 
-const IdeasBoard = ({ ideas, onAddClick, onPromote, onDelete, onReorder, cities = [], cityFilter, onFilterChange }) => {
+const IdeasBoard = ({
+  ideas,
+  onAddClick,
+  onPromote,
+  onDelete,
+  onReorder,
+  onSaveAsPlace,
+  cities = [],
+  cityFilter,
+  onFilterChange,
+}) => {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const [activeId, setActiveId] = useState(null);
   const activeIdea = useMemo(() => (ideas || []).find((i) => i.id === activeId), [activeId, ideas]);
@@ -117,13 +131,20 @@ const IdeasBoard = ({ ideas, onAddClick, onPromote, onDelete, onReorder, cities 
   };
 
   return (
-    <Box bg="white" color="gray.900" borderRadius="16px" p={{ base: 3, md: 4 }} boxShadow="xl" border="1px solid rgba(0,0,0,0.05)">
-      <Flex justify="space-between" align="center" mb={2}>
+    <Box
+      bg="#0f1828"
+      color="whiteAlpha.900"
+      borderRadius="16px"
+      p={{ base: 3, md: 4 }}
+      boxShadow="xl"
+      border="1px solid rgba(255,255,255,0.12)"
+    >
+      <Flex justify="space-between" align="center" mb={2} gap={3} wrap="wrap">
         <Box>
-          <Heading size="lg" color="gray.800">
+          <Heading size="lg" color="white">
             Ideas board
           </Heading>
-          <Text color="gray.600" fontSize="sm">
+          <Text color="whiteAlpha.800" fontSize="sm">
             Wishlist items you can promote to the plan.
           </Text>
         </Box>
@@ -136,7 +157,7 @@ const IdeasBoard = ({ ideas, onAddClick, onPromote, onDelete, onReorder, cities 
           size="sm"
           variant={!cityFilter ? 'solid' : 'ghost'}
           bg={!cityFilter ? 'whiteAlpha.300' : 'whiteAlpha.200'}
-          color={!cityFilter ? '#0c0c0c' : 'gray.800'}
+          color={!cityFilter ? '#0c0c0c' : 'white'}
           onClick={() => onFilterChange && onFilterChange(null)}
         >
           All cities
@@ -147,7 +168,7 @@ const IdeasBoard = ({ ideas, onAddClick, onPromote, onDelete, onReorder, cities 
             size="sm"
             variant={cityFilter === c.id ? 'solid' : 'ghost'}
             bg={cityFilter === c.id ? 'indigo.500' : 'whiteAlpha.200'}
-            color={cityFilter === c.id ? '#0c0c0c' : 'gray.800'}
+            color={cityFilter === c.id ? '#0c0c0c' : 'white'}
             onClick={() => onFilterChange && onFilterChange(cityFilter === c.id ? null : c.id)}
           >
             {c.name}
@@ -168,6 +189,7 @@ const IdeasBoard = ({ ideas, onAddClick, onPromote, onDelete, onReorder, cities 
                     onPromote={() => onPromote(idea)}
                     onDelete={() => onDelete(idea.id)}
                     onEdit={() => onAddClick(idea)}
+                    onSaveAsPlace={() => onSaveAsPlace && onSaveAsPlace(idea)}
                     cityLabel={city?.name}
                     cityColor={undefined}
                   />
@@ -187,7 +209,7 @@ const IdeasBoard = ({ ideas, onAddClick, onPromote, onDelete, onReorder, cities 
         </DragOverlay>
       </DndContext>
       <Divider my={4} borderColor="blackAlpha.200" />
-      <Text color="gray.600" fontSize="sm">
+      <Text color="whiteAlpha.700" fontSize="sm">
         Drop places or links, then move them into days when decided.
       </Text>
     </Box>

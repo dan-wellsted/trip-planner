@@ -52,16 +52,16 @@ const BookingItem = ({ booking, onDelete }) => (
 );
 
 const BookingsCard = ({ bookings, onAddClick, onDelete }) => (
-  <Card>
+  <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
     <CardHeader pb={2}>
       <Flex justify="space-between" align="center">
         <Box>
-          <Heading size="md">Bookings</Heading>
+          <Heading size="md" color="white">Bookings</Heading>
           <Text color="whiteAlpha.700" fontSize="sm">
             Flights, hotels, trains, tickets.
           </Text>
         </Box>
-        <Button variant="ghost" onClick={onAddClick}>
+        <Button variant="ghost" color="white" onClick={onAddClick} _hover={{ bg: 'whiteAlpha.200' }}>
           + Add
         </Button>
       </Flex>

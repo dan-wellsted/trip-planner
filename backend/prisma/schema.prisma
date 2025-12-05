@@ -171,14 +171,14 @@ model Place {
   address   String?
   lat       Float?
   lng       Float?
-  tag       String?
+  tag       IdeaCategory?
   link      String?
   notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  city   City? @relation(fields: [cityId], references: [id])
-  cityId Int?
+  city   City @relation(fields: [cityId], references: [id])
+  cityId Int
 
   trip   Trip @relation(fields: [tripId], references: [id])
   tripId Int
