@@ -219,18 +219,25 @@ const PlacesBoard = ({
       })),
     [placesWithCoords]
   );
+  const useClusters = placesWithCoords.length > 10;
   const clusterIndex = useMemo(() => {
-    const index = new Supercluster({ radius: 70, maxZoom: 18 });
+    if (!useClusters) return null;
+    const index = new Supercluster({ radius: 60, maxZoom: 18 });
     index.load(points);
     return index;
-  }, [points]);
-  useEffect(() => {
-    const globalClusters = clusterIndex.getClusters([-180, -85, 180, 85], 3);
-    setClusters(globalClusters);
-  }, [clusterIndex]);
+  }, [points, useClusters]);
 
   useEffect(() => {
-    if (!map) return undefined;
+    if (!useClusters || !clusterIndex) {
+      setClusters([]);
+      return;
+    }
+    const globalClusters = clusterIndex.getClusters([-180, -85, 180, 85], 3);
+    setClusters(globalClusters);
+  }, [clusterIndex, useClusters]);
+
+  useEffect(() => {
+    if (!map || !useClusters || !clusterIndex) return undefined;
     const update = () => {
       const bounds = map.getBounds();
       const zoom = map.getZoom();
@@ -242,10 +249,12 @@ const PlacesBoard = ({
     };
     update();
     map.on('moveend', update);
+    map.on('zoomend', update);
     return () => {
       map.off('moveend', update);
+      map.off('zoomend', update);
     };
-  }, [map, clusterIndex]);
+  }, [map, clusterIndex, useClusters]);
   const defaultCenter = placesWithCoords.length
     ? [Number(placesWithCoords[Math.floor(placesWithCoords.length / 2)].lat), Number(placesWithCoords[Math.floor(placesWithCoords.length / 2)].lng)]
     : [35.6762, 139.6503];
@@ -436,11 +445,15 @@ const PlacesBoard = ({
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> | Tiles &copy; <a href="https://carto.com/attributions">CARTO</a>'
                 url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
               />
-              {(clusters.length ? clusters : placesWithCoords.map((p) => ({
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: [Number(p.lng), Number(p.lat)] },
-                properties: { cluster: false, placeId: p.id },
-              }))).map((feature) => {
+              {(
+                useClusters && clusters.length
+                  ? clusters
+                  : placesWithCoords.map((p) => ({
+                      type: 'Feature',
+                      geometry: { type: 'Point', coordinates: [Number(p.lng), Number(p.lat)] },
+                      properties: { cluster: false, placeId: p.id },
+                    }))
+              ).map((feature) => {
                 const [lng, lat] = feature.geometry.coordinates;
                 const { cluster: isCluster, point_count: pointCount, cluster_id: clusterId } = feature.properties;
                 if (isCluster) {
