@@ -250,6 +250,9 @@ app.get('/health', asyncHandler(async (_req, res) => {
 }));
 
 app.get('/trips', asyncHandler(async (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
   const where = req.userId
     ? {
         OR: [
@@ -290,6 +293,9 @@ app.post('/trips', asyncHandler(async (req, res) => {
 
 app.get('/trips/:id', asyncHandler(async (req, res) => {
   const tripId = Number(req.params.id);
+  if (!req.userId) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
   const accessFilter = req.userId
     ? {
         id: tripId,

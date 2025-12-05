@@ -410,6 +410,7 @@ function App() {
       }
     };
 
+    if (!user) return;
     try {
       setLoading(true);
       setError(null);
@@ -446,6 +447,7 @@ function App() {
       if (err?.status === 401) {
         setStatus('Login to view your trips');
         setTrip(null);
+        setTrips([]);
         setCities([]);
         setBookings([]);
         setIdeas([]);
@@ -455,9 +457,11 @@ function App() {
       } else {
         console.warn('Falling back to demo data', err);
         setStatus('Offline demo data');
-        setError('API unavailable, showing demo data.');
-        setSelectedDayId(fallbackTrip.days?.[0]?.id || null);
-        setSelectedDayDate(fallbackTrip.days?.[0]?.date || fallbackTrip.startDate || '');
+        setError('API unavailable.');
+        setTrip(null);
+        setTrips([]);
+        setSelectedDayId(null);
+        setSelectedDayDate('');
       }
     } finally {
       setLoading(false);
@@ -469,10 +473,16 @@ function App() {
       try {
         const meResp = await fetchMe();
         setUser(meResp);
+        await loadTrips();
       } catch (err) {
         setUser(null);
-      } finally {
-        loadTrips();
+        setTrips([]);
+        setTrip(null);
+        setStatus('Login to view your trips');
+        setCities([]);
+        setBookings([]);
+        setIdeas([]);
+        setPlaces([]);
       }
     })();
   }, []);
