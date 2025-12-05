@@ -230,6 +230,28 @@ app.delete('/activities/:id', asyncHandler(async (req, res) => {
   res.status(204).end();
 }));
 
+app.post('/days/:id/activities/reorder', asyncHandler(async (req, res) => {
+  const dayId = Number(req.params.id);
+  const { order } = req.body;
+  if (!Array.isArray(order)) {
+    return res.status(400).json({ error: 'order must be an array of activity IDs' });
+  }
+  await prisma.$transaction(
+    order.map((id, idx) =>
+      prisma.activity.update({
+        where: { id: Number(id) },
+        data: { position: idx + 1 },
+      })
+    )
+  );
+  const activities = await prisma.activity.findMany({
+    where: { dayId },
+    orderBy: [{ position: 'asc' }, { startTime: 'asc' }],
+    include: { city: true },
+  });
+  res.json(activities);
+}));
+
 app.post('/trips/:id/checklist', asyncHandler(async (req, res) => {
   const tripId = Number(req.params.id);
   const { title, category } = req.body;

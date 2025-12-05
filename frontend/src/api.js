@@ -44,6 +44,10 @@ export function deleteActivity(activityId) {
   return jsonFetch(`/activities/${activityId}`, { method: 'DELETE' });
 }
 
+export function reorderActivities(dayId, order) {
+  return jsonFetch(`/days/${dayId}/activities/reorder`, { method: 'POST', body: { order } });
+}
+
 export function toggleChecklistItem(itemId) {
   return jsonFetch(`/checklist/${itemId}/toggle`, { method: 'PATCH' });
 }

@@ -45,6 +45,7 @@ import {
   createActivity,
   updateActivity,
   deleteActivity,
+  reorderActivities,
   toggleChecklistItem,
   createExpense,
   fetchBookings,
@@ -71,6 +72,7 @@ import {
 import BookingsCard from './components/BookingsCard';
 import IdeasBoard from './components/IdeasBoard';
 import PlacesBoard from './components/PlacesBoard';
+import ActivitiesList from './components/ActivitiesList';
 
 const fallbackTrip = {
   name: 'Japan 2026',
@@ -213,6 +215,16 @@ function formatActivityTime(activity) {
   return tzAbbrev ? `${formatted} ${tzAbbrev}` : formatted;
 }
 
+function activityDurationMinutes(activity) {
+  if (activity?.startTime && activity?.endTime) {
+    const start = new Date(activity.startTime);
+    const end = new Date(activity.endTime);
+    const diff = Math.max(0, end - start);
+    return Math.max(15, Math.round(diff / 60000));
+  }
+  return 60;
+}
+
 function parsePlaceLink(raw) {
   const cleaned = (raw || '').trim();
   if (!cleaned) return {};
@@ -270,7 +282,7 @@ function App() {
   const [tripForm, setTripForm] = useState({ name: '', startDate: '', endDate: '' });
   const [dayForm, setDayForm] = useState({ date: '', title: '' });
   const [editingDayId, setEditingDayId] = useState(null);
-  const [activityForm, setActivityForm] = useState({ title: '', startTime: '', location: '', category: '', cityId: '' });
+  const [activityForm, setActivityForm] = useState({ title: '', startTime: '', endTime: '', location: '', category: '', cityId: '' });
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [expenseForm, setExpenseForm] = useState({ amount: '', currency: 'JPY', note: '', category: '' });
   const [bookings, setBookings] = useState([]);
@@ -864,12 +876,13 @@ function App() {
       await createActivity(dayIdToUse, {
         title: activityForm.title,
         startTime: activityForm.startTime || null,
+        endTime: activityForm.endTime || null,
         location: activityForm.location || null,
         category: activityForm.category || null,
         cityId: activityForm.cityId ? Number(activityForm.cityId) : null,
       });
       await loadTrips();
-      setActivityForm({ title: '', startTime: '', location: '', category: '', cityId: '' });
+      setActivityForm({ title: '', startTime: '', endTime: '', location: '', category: '', cityId: '' });
       activityModal.onClose();
       toast({ status: 'success', title: 'Activity added' });
     } catch (err) {
@@ -883,12 +896,13 @@ function App() {
       await updateActivity(editingActivityId, {
         title: activityForm.title || undefined,
         startTime: activityForm.startTime || undefined,
+        endTime: activityForm.endTime || undefined,
         location: activityForm.location || undefined,
         category: activityForm.category || undefined,
         cityId: activityForm.cityId ? Number(activityForm.cityId) : undefined,
       });
       await loadTrips();
-      setActivityForm({ title: '', startTime: '', location: '', category: '', cityId: '' });
+      setActivityForm({ title: '', startTime: '', endTime: '', location: '', category: '', cityId: '' });
       setEditingActivityId(null);
       activityModal.onClose();
       toast({ status: 'success', title: 'Activity updated' });
@@ -1082,6 +1096,11 @@ function App() {
                       ).map((id) => cities.find((c) => c.id === id)).filter(Boolean);
                       const dayCities = day.city ? [day.city] : [];
                       const allCities = Array.from(new Map([...dayCities, ...activityCities].map((c) => [c.id, c])).values());
+                      const totalDuration = (day.activities || []).reduce(
+                        (sum, act) => sum + activityDurationMinutes(act),
+                        0
+                      );
+                      const dayOverbooked = totalDuration > 12 * 60;
                       return (
                         <Box
                           key={day.id}
@@ -1096,6 +1115,11 @@ function App() {
                               {formatDate(day.date)}
                             </Tag>
                             <HStack>
+                              {dayOverbooked && (
+                                <Tag size="sm" colorScheme="red" variant="solid">
+                                  Overbooked
+                                </Tag>
+                              )}
                               {allCities.map((c) => (
                                 <Tag key={c.id} color={cityColorMap.get(c.id) ? '#0c0c0c' : undefined} bg={cityColorMap.get(c.id)}>
                                   {c.name}
@@ -1122,59 +1146,44 @@ function App() {
                               </Flex>
                             </HStack>
                           </Flex>
-                          <Stack spacing={3}>
-                            {(day.activities || []).map((act) => (
-                              <Flex key={act.id} align="center" justify="space-between" gap={3}>
-                                <Box>
-                                  <Text fontWeight="bold" fontSize="lg" color="white">
-                                    {act.title}
-                                  </Text>
-                                  <Text color="whiteAlpha.700" fontSize="sm">
-                                    {formatActivityTime(act)} · {act.location || 'TBD'} · {act.category || 'activity'}
-                                  </Text>
-                                </Box>
-                                <HStack>
-                                  {act.city && (
-                                    <Tag size="sm" bg={cityColorMap.get(act.city.id)} color={cityColorMap.get(act.city.id) ? '#0c0c0c' : undefined}>
-                                      {act.city.name}
-                                    </Tag>
-                                  )}
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => {
-                                      setSelectedDayId(day.id);
-                                      setEditingActivityId(act.id);
-                                      setActivityForm({
-                                        title: act.title || '',
-                                        startTime: act.startTime ? new Date(act.startTime).toISOString().slice(0, 16) : '',
-                                        location: act.location || '',
-                                        category: act.category || '',
-                                        cityId: act.city?.id || day.cityId || '',
-                                      });
-                                      activityModal.onOpen();
-                                    }}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <IconButton
-                                    size="sm"
-                                    aria-label="Delete"
-                                    onClick={() => handleDeleteActivity(act.id)}
-                                    icon={
-                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M5 7h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                                        <path d="M10 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                                        <path d="M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                                        <path d="M6 7l1 12h10l1-12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                        <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                                      </svg>
-                                    }
-                                  />
-                                </HStack>
-                              </Flex>
-                            ))}
-                          </Stack>
+                          <ActivitiesList
+                            activities={day.activities || []}
+                            cities={cities}
+                            dayOverbooked={dayOverbooked}
+                            onEdit={(act) => {
+                              setSelectedDayId(day.id);
+                              setEditingActivityId(act.id);
+                              setActivityForm({
+                                title: act.title || '',
+                                startTime: act.startTime ? new Date(act.startTime).toISOString().slice(0, 16) : '',
+                                endTime: act.endTime ? new Date(act.endTime).toISOString().slice(0, 16) : '',
+                                location: act.location || '',
+                                category: act.category || '',
+                                cityId: act.cityId || act.city?.id || day.cityId || '',
+                              });
+                              activityModal.onOpen();
+                            }}
+                            onDelete={(id) => handleDeleteActivity(id)}
+                            onReorder={(movingId, overId) => {
+                              if (!day.activities || day.activities.length === 0) return;
+                              const order = day.activities.map((a) => a.id);
+                              const from = order.indexOf(movingId);
+                              const to = order.indexOf(overId);
+                              if (from === -1 || to === -1) return;
+                              const reordered = [...order];
+                              const [moved] = reordered.splice(from, 1);
+                              reordered.splice(to, 0, moved);
+                              reorderActivities(day.id, reordered).then((updated) => {
+                                setTrip((prev) => {
+                                  if (!prev) return prev;
+                                  const nextDays = (prev.days || []).map((d) =>
+                                    d.id === day.id ? { ...d, activities: updated } : d
+                                  );
+                                  return { ...prev, days: nextDays };
+                                });
+                              });
+                            }}
+                          />
                         </Box>
                       );
                     })}
@@ -1288,6 +1297,8 @@ function App() {
                       const iso = format(dayDate, 'yyyy-MM-dd');
                       const dayData = sortedDays.find((d) => d.date?.slice(0, 10) === iso);
                       const activities = dayData?.activities || [];
+                      const totalDuration = activities.reduce((sum, act) => sum + activityDurationMinutes(act), 0);
+                      const dayOverbooked = totalDuration > 12 * 60;
                       return (
                         <Box
                           key={`cal-${iso}`}
@@ -1305,6 +1316,11 @@ function App() {
                                 <Tag colorScheme="indigo" variant="subtle">
                                   {activities.length} items
                                 </Tag>
+                                {dayOverbooked && (
+                                  <Tag colorScheme="red" variant="solid">
+                                    Overbooked
+                                  </Tag>
+                                )}
                                 {dayData?.city && (
                                   <Tag bg={cityColorMap.get(dayData.city.id)} color={cityColorMap.get(dayData.city.id) ? '#0c0c0c' : undefined}>
                                     {dayData.city.name}
@@ -1760,14 +1776,24 @@ function App() {
                   onChange={(e) => setActivityForm((f) => ({ ...f, title: e.target.value }))}
                 />
               </FormControl>
-              <FormControl>
-                <FormLabel>Start time</FormLabel>
-                <Input
-                  type="datetime-local"
-                  value={activityForm.startTime}
-                  onChange={(e) => setActivityForm((f) => ({ ...f, startTime: e.target.value }))}
-                />
-              </FormControl>
+              <HStack>
+                <FormControl>
+                  <FormLabel>Start time</FormLabel>
+                  <Input
+                    type="datetime-local"
+                    value={activityForm.startTime}
+                    onChange={(e) => setActivityForm((f) => ({ ...f, startTime: e.target.value }))}
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>End time</FormLabel>
+                  <Input
+                    type="datetime-local"
+                    value={activityForm.endTime}
+                    onChange={(e) => setActivityForm((f) => ({ ...f, endTime: e.target.value }))}
+                  />
+                </FormControl>
+              </HStack>
               <HStack>
                 <FormControl>
                   <FormLabel>Location</FormLabel>
@@ -1808,7 +1834,7 @@ function App() {
               mr={3}
               onClick={() => {
                 setEditingActivityId(null);
-                setActivityForm({ title: '', startTime: '', location: '', category: '' });
+                setActivityForm({ title: '', startTime: '', endTime: '', location: '', category: '', cityId: '' });
                 activityModal.onClose();
               }}
             >
