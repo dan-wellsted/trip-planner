@@ -83,6 +83,7 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - Sharing: read-only share links or invites; optional album link for Moments.
 - Smart reminders: push/email for flights/hotels/timed tickets; “leave by” alerts using transit times.
 - Offline-first: cache itinerary/PNRs/checklists for subway use.
+- Authentication + multi-user: sign up/login, user-owned trips, session cookies or JWT, per-user data isolation, and role hooks for future collaboration.
 - Seed/import: CSV/ICS paste for flights/hotels to auto-create activities.
 - Multi-city routing: visualize order of cities, distance/time between stops, and smart reorder suggestions.
 - PDF/export: printable itinerary and offline bundle (bookings + QR codes), plus calendar (.ics) export.
