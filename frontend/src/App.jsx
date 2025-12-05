@@ -1037,7 +1037,9 @@ function App() {
               { label: 'Places', path: '/places' },
               { label: 'Ideas', path: '/ideas' },
             ].map((item) => {
-              const active = location.pathname === item.path || (item.path === '/' && location.pathname === '');
+              const active = item.path === '/'
+                ? location.pathname === '/' || location.pathname === ''
+                : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
               return (
                 <Button
                   key={item.path}
