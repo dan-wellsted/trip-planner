@@ -83,7 +83,7 @@ const formatTimeRange = (startTime, endTime) => {
   return 'Time tbd';
 };
 
-const ActivitiesList = ({ activities, cities, onEdit, onDelete, onReorder, dayOverbooked }) => {
+const ActivitiesList = ({ activities, cities, onEdit, onDelete, onReorder, dayOverbooked, travelEstimate }) => {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const [activeId, setActiveId] = useState(null);
   const activeActivity = useMemo(() => (activities || []).find((a) => a.id === activeId), [activeId, activities]);
@@ -110,12 +110,8 @@ const ActivitiesList = ({ activities, cities, onEdit, onDelete, onReorder, dayOv
             </Tag>
           ) : null;
           const durationText = formatTimeRange(act.startTime, act.endTime);
-          let travelText = '';
-          if (idx > 0) {
-            const prev = activities[idx - 1];
-            const sameCity = prev?.cityId && act.cityId && prev.cityId === act.cityId;
-            travelText = sameCity ? 'Travel est. 15 min' : 'Travel est. 45 min';
-          }
+          const travelMinutes = travelEstimate ? travelEstimate(idx, activities) : 0;
+          const travelText = travelMinutes ? `Travel est. ${travelMinutes} min` : '';
           return (
             <SortableActivity
               key={act.id}

@@ -225,6 +225,12 @@ function activityDurationMinutes(activity) {
   return 60;
 }
 
+function estimateTravelMinutes(prev, next) {
+  if (!prev || !next) return 0;
+  const sameCity = prev.cityId && next.cityId && prev.cityId === next.cityId;
+  return sameCity ? 15 : 45;
+}
+
 function parsePlaceLink(raw) {
   const cleaned = (raw || '').trim();
   if (!cleaned) return {};
@@ -1150,6 +1156,11 @@ function App() {
                             activities={day.activities || []}
                             cities={cities}
                             dayOverbooked={dayOverbooked}
+                            travelEstimate={(idx, acts) => {
+                              if (idx === 0) return 0;
+                              const prev = acts[idx - 1];
+                              return estimateTravelMinutes(prev, acts[idx]);
+                            }}
                             onEdit={(act) => {
                               setSelectedDayId(day.id);
                               setEditingActivityId(act.id);
