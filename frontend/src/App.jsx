@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { addDays, differenceInCalendarDays, format } from 'date-fns';
-import { Routes, Route, useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
+import { Routes, Route, useLocation, Link as RouterLink } from 'react-router-dom';
 import {
   Badge,
   Box,
@@ -275,6 +275,7 @@ function parsePlaceLink(raw) {
 }
 
 function App() {
+  const location = useLocation();
   const [trip, setTrip] = useState(fallbackTrip);
   const [status, setStatus] = useState('Offline demo data');
   const [loading, setLoading] = useState(false);
