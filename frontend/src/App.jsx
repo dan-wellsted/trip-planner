@@ -1836,6 +1836,8 @@ function App() {
                     type="datetime-local"
                     value={activityForm.startTime}
                     onChange={(e) => setActivityForm((f) => ({ ...f, startTime: e.target.value }))}
+                    w="100%"
+                    minW={0}
                   />
                 </FormControl>
                 <FormControl>
@@ -1844,6 +1846,8 @@ function App() {
                     type="datetime-local"
                     value={activityForm.endTime}
                     onChange={(e) => setActivityForm((f) => ({ ...f, endTime: e.target.value }))}
+                    w="100%"
+                    minW={0}
                   />
                 </FormControl>
               </Stack>
@@ -1854,6 +1858,8 @@ function App() {
                     placeholder="Shibuya"
                     value={activityForm.location}
                     onChange={(e) => setActivityForm((f) => ({ ...f, location: e.target.value }))}
+                    w="100%"
+                    minW={0}
                   />
                 </FormControl>
                 <FormControl>
@@ -1862,6 +1868,8 @@ function App() {
                     placeholder="food"
                     value={activityForm.category}
                     onChange={(e) => setActivityForm((f) => ({ ...f, category: e.target.value }))}
+                    w="100%"
+                    minW={0}
                   />
                 </FormControl>
               </Stack>
