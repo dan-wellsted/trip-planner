@@ -100,3 +100,6 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - Ideas: board with drag ordering, promote/save-as-place.
 - Cities: manager modal for trip stops.
 - Auth: inline login/register bar; invite members (owner/editor/viewer) to shared trips.
+
+- Unauthenticated: Landing page with login/sign-up only; no trip tools until signed in.
+- Authenticated: `/` shows “My trips” (list/create). `/trip/{id}` hosts the full planner (dashboard, calendar, places, ideas, day builder, etc.) for that trip.
