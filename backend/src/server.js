@@ -60,7 +60,15 @@ app.get('/trips', asyncHandler(async (_req, res) => {
     },
   });
   await Promise.all(trips.map((trip) => ensureTripDays(trip)));
-  res.json(trips);
+  const withParsedCities = trips.map((trip) => ({
+    ...trip,
+    days: trip.days.map((day) => ({
+      ...day,
+      cityIds: day.cityIdsJson ? JSON.parse(day.cityIdsJson) : (day.cityId ? [day.cityId] : []),
+    })),
+  }));
+
+  res.json(withParsedCities);
 }));
 
 app.post('/trips', asyncHandler(async (req, res) => {
@@ -127,15 +135,28 @@ app.get('/trips/:id', asyncHandler(async (req, res) => {
     },
   });
 
-  res.json(refreshed);
+  const parsed = refreshed
+    ? {
+        ...refreshed,
+        days: refreshed.days.map((day) => ({
+          ...day,
+          cityIds: day.cityIdsJson ? JSON.parse(day.cityIdsJson) : (day.cityId ? [day.cityId] : []),
+        })),
+      }
+    : null;
+
+  res.json(parsed);
 }));
 
 app.post('/trips/:id/days', asyncHandler(async (req, res) => {
   const tripId = Number(req.params.id);
-  const { date, title, note, cityId } = req.body;
+  const { date, title, note, cityId, cityIds } = req.body;
   if (!date) {
     return res.status(400).json({ error: 'date is required (ISO string)' });
   }
+
+  const cityIdsArray = Array.isArray(cityIds) ? cityIds.map((c) => Number(c)).filter((c) => !Number.isNaN(c)) : [];
+  const primaryCityId = cityId || cityIdsArray[0] || null;
 
   const day = await prisma.day.create({
     data: {
@@ -143,25 +164,34 @@ app.post('/trips/:id/days', asyncHandler(async (req, res) => {
       title: title || null,
       note: note || null,
       tripId,
-      cityId: cityId || null,
+      cityId: primaryCityId,
+      cityIdsJson: cityIdsArray.length ? JSON.stringify(cityIdsArray) : null,
     },
   });
 
-  res.status(201).json(day);
+  res.status(201).json({
+    ...day,
+    cityIds: cityIdsArray,
+  });
 }));
 
 app.patch('/days/:id', asyncHandler(async (req, res) => {
   const dayId = Number(req.params.id);
-  const { title, note, cityId } = req.body;
+  const { title, note, cityId, cityIds } = req.body;
+  const cityIdsArray = Array.isArray(cityIds) ? cityIds.map((c) => Number(c)).filter((c) => !Number.isNaN(c)) : null;
   const updated = await prisma.day.update({
     where: { id: dayId },
     data: {
       title: title ?? undefined,
       note: note ?? undefined,
-      cityId: cityId ?? undefined,
+      cityId: cityId ?? (cityIdsArray ? cityIdsArray[0] ?? null : undefined),
+      cityIdsJson: cityIdsArray ? (cityIdsArray.length ? JSON.stringify(cityIdsArray) : null) : undefined,
     },
   });
-  res.json(updated);
+  res.json({
+    ...updated,
+    cityIds: cityIdsArray ?? (updated.cityIdsJson ? JSON.parse(updated.cityIdsJson) : updated.cityId ? [updated.cityId] : []),
+  });
 }));
 
 app.post('/days/:id/activities', asyncHandler(async (req, res) => {

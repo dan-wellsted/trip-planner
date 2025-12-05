@@ -10,6 +10,7 @@ import {
   CardBody,
   CardHeader,
   Checkbox,
+  CheckboxGroup,
   Container,
   Divider,
   Flex,
@@ -328,7 +329,7 @@ function App() {
   const [selectedDayId, setSelectedDayId] = useState(fallbackTrip.days?.[0]?.id || null);
   const [selectedDayDate, setSelectedDayDate] = useState(fallbackTrip.days?.[0]?.date || '');
   const [tripForm, setTripForm] = useState({ name: '', startDate: '', endDate: '' });
-  const [dayForm, setDayForm] = useState({ date: '', title: '' });
+  const [dayForm, setDayForm] = useState({ date: '', title: '', cityIds: [] });
   const [editingDayId, setEditingDayId] = useState(null);
   const [activityForm, setActivityForm] = useState({ title: '', startTime: '', endTime: '', location: '', category: '', cityId: '' });
   const [editingActivityId, setEditingActivityId] = useState(null);
@@ -493,14 +494,16 @@ function App() {
         label: `${format(date, 'EEE dd MMM')}${existing?.title ? ` — ${existing.title}` : ''}`,
         value: existing ? String(existing.id) : `date:${iso}`,
         date: iso,
-        cityId: existing?.cityId || null,
+        cityId: existing?.cityId || existing?.cityIds?.[0] || null,
       });
     }
     return options;
   })();
   const cityColors = ['brand.300', 'indigo.500', 'green.400', 'orange.400', 'pink.400', 'cyan.400'];
   const cityColorMap = new Map(cities.map((c, idx) => [c.id, cityColors[idx % cityColors.length]]));
-  const visibleDays = cityFilter ? sortedDays.filter((d) => d.cityId === cityFilter) : sortedDays;
+  const visibleDays = cityFilter
+    ? sortedDays.filter((d) => (Array.isArray(d.cityIds) ? d.cityIds.includes(cityFilter) : d.cityId === cityFilter))
+    : sortedDays;
 
   useEffect(() => {
     loadTrips();
@@ -918,12 +921,20 @@ function App() {
     }
     try {
       if (editingDayId) {
-        await updateDay(editingDayId, { title: dayForm.title || null });
+        await updateDay(editingDayId, {
+          title: dayForm.title || null,
+          cityIds: Array.isArray(dayForm.cityIds) ? dayForm.cityIds.map((c) => Number(c)) : [],
+        });
       } else {
-        await createDay(trip.id, { date: dayForm.date, title: dayForm.title || null, cityId: cityFilter || null });
+        await createDay(trip.id, {
+          date: dayForm.date,
+          title: dayForm.title || null,
+          cityIds: Array.isArray(dayForm.cityIds) ? dayForm.cityIds.map((c) => Number(c)) : [],
+          cityId: null,
+        });
       }
       await loadTrips();
-      setDayForm({ date: '', title: '' });
+      setDayForm({ date: '', title: '', cityIds: [] });
       setEditingDayId(null);
       dayModal.onClose();
       toast({ status: 'success', title: editingDayId ? 'Day updated' : 'Day added' });
@@ -1156,7 +1167,10 @@ function App() {
                         )
                       ).map((id) => cities.find((c) => c.id === id)).filter(Boolean);
                       const dayCities = day.city ? [day.city] : [];
-                      const allCities = Array.from(new Map([...dayCities, ...activityCities].map((c) => [c.id, c])).values());
+                      const multiCities = (day.cityIds || [])
+                        .map((id) => cities.find((c) => c.id === id))
+                        .filter(Boolean);
+                      const allCities = Array.from(new Map([...dayCities, ...multiCities, ...activityCities].map((c) => [c.id, c])).values());
                       const totalDuration = (day.activities || []).reduce(
                         (sum, act) => sum + activityDurationMinutes(act),
                         0
@@ -1198,6 +1212,7 @@ function App() {
                                     setDayForm({
                                       date: day.date?.slice(0, 10) || '',
                                       title: day.title || '',
+                                      cityIds: (day.cityIds || (day.cityId ? [day.cityId] : [])).map((id) => String(id)),
                                     });
                                     dayModal.onOpen();
                                   }}
@@ -1224,7 +1239,11 @@ function App() {
                                   }
                                 >
                                   {places
-                                    .filter((p) => !day.cityId || p.cityId === day.cityId)
+                                    .filter((p) => {
+                                      const allowedCities = Array.isArray(day.cityIds) && day.cityIds.length > 0 ? day.cityIds : day.cityId ? [day.cityId] : [];
+                                      if (allowedCities.length === 0) return true;
+                                      return allowedCities.includes(p.cityId);
+                                    })
                                     .map((p) => (
                                       <option key={`quick-place-${p.id}`} value={p.id}>
                                         {p.name} {p.city ? `· ${p.city.name}` : ''}
@@ -1277,7 +1296,7 @@ function App() {
                                 endTime: act.endTime ? new Date(act.endTime).toISOString().slice(0, 16) : '',
                                 location: act.location || '',
                                 category: act.category || '',
-                                cityId: act.cityId || act.city?.id || day.cityId || '',
+                                cityId: act.cityId || act.city?.id || day.cityId || day.cityIds?.[0] || '',
                               });
                               activityModal.onOpen();
                             }}
@@ -1443,11 +1462,20 @@ function App() {
                                     Overbooked
                                   </Tag>
                                 )}
-                                {dayData?.city && (
-                                  <Tag bg={cityColorMap.get(dayData.city.id)} color={cityColorMap.get(dayData.city.id) ? '#0c0c0c' : undefined}>
-                                    {dayData.city.name}
-                                  </Tag>
-                                )}
+                                {(() => {
+                                  const calendarCities = [
+                                    ...(dayData?.city ? [dayData.city] : []),
+                                    ...((dayData?.cityIds || [])
+                                      .map((id) => cities.find((c) => c.id === id))
+                                      .filter(Boolean)),
+                                  ];
+                                  const uniqCities = Array.from(new Map(calendarCities.map((c) => [c.id, c])).values());
+                                  return uniqCities.map((c) => (
+                                    <Tag key={`cal-city-${dayData?.id}-${c.id}`} bg={cityColorMap.get(c.id)} color={cityColorMap.get(c.id) ? '#0c0c0c' : undefined}>
+                                      {c.name}
+                                    </Tag>
+                                  ));
+                                })()}
                                 <Button
                                   size="xs"
                                   variant="ghost"
@@ -1460,7 +1488,7 @@ function App() {
                       startTime: dayData ? `${format(dayData.date, 'yyyy-MM-dd')}T` : `${format(dayDate, 'yyyy-MM-dd')}T`,
                       location: '',
                       category: '',
-                      cityId: dayData?.cityId || '',
+                      cityId: dayData?.cityId || dayData?.cityIds?.[0] || '',
                     });
                     activityModal.onOpen();
                   }}
@@ -1505,7 +1533,7 @@ function App() {
                                         startTime: act.startTime ? new Date(act.startTime).toISOString().slice(0, 16) : '',
                                         location: act.location || '',
                                         category: act.category || '',
-                                        cityId: act.city?.id || dayData?.cityId || '',
+                                        cityId: act.city?.id || dayData?.cityId || dayData?.cityIds?.[0] || '',
                                       });
                                       activityModal.onOpen();
                                     }}
@@ -1820,7 +1848,7 @@ function App() {
           </ModalFooter>
         </ModalContent>
       </Modal>
-      <Modal isOpen={dayModal.isOpen} onClose={() => { setEditingDayId(null); setDayForm({ date: '', title: '' }); dayModal.onClose(); }} isCentered>
+      <Modal isOpen={dayModal.isOpen} onClose={() => { setEditingDayId(null); setDayForm({ date: '', title: '', cityIds: [] }); dayModal.onClose(); }} isCentered>
         <ModalOverlay />
         <ModalContent bg="#0f1624" border="1px solid rgba(255,255,255,0.08)">
           <ModalHeader>{editingDayId ? 'Edit day' : 'Add day'}</ModalHeader>
@@ -1836,13 +1864,28 @@ function App() {
                   isDisabled={Boolean(editingDayId)}
                 />
               </FormControl>
+                <FormControl>
+                  <FormLabel>Title</FormLabel>
+                  <Input
+                    placeholder="Kyoto temples"
+                    value={dayForm.title}
+                    onChange={(e) => setDayForm((f) => ({ ...f, title: e.target.value }))}
+                  />
+                </FormControl>
               <FormControl>
-                <FormLabel>Title</FormLabel>
-                <Input
-                  placeholder="Kyoto temples"
-                  value={dayForm.title}
-                  onChange={(e) => setDayForm((f) => ({ ...f, title: e.target.value }))}
-                />
+                <FormLabel>Cities for this day</FormLabel>
+                <CheckboxGroup
+                  value={dayForm.cityIds}
+                  onChange={(vals) => setDayForm((f) => ({ ...f, cityIds: vals }))}
+                >
+                  <Stack direction="column" spacing={1}>
+                    {(cities || []).map((c) => (
+                      <Checkbox key={`day-city-${c.id}`} value={String(c.id)} colorScheme="brand">
+                        {c.name}
+                      </Checkbox>
+                    ))}
+                  </Stack>
+                </CheckboxGroup>
               </FormControl>
             </Stack>
           </ModalBody>
@@ -1852,7 +1895,7 @@ function App() {
               mr={3}
               onClick={() => {
                 setEditingDayId(null);
-                setDayForm({ date: '', title: '' });
+                setDayForm({ date: '', title: '', cityIds: [] });
                 dayModal.onClose();
               }}
             >
