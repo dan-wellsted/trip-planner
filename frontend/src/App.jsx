@@ -10,6 +10,7 @@ import {
   CardBody,
   CardHeader,
   Checkbox,
+  CheckboxGroup,
   Container,
   Divider,
   Flex,
@@ -227,6 +228,51 @@ function activityDurationMinutes(activity) {
   return 60;
 }
 
+function toNumber(val) {
+  const num = Number(val);
+  return Number.isFinite(num) ? num : null;
+}
+
+function haversineDistanceKm(a, b) {
+  const lat1 = toNumber(a?.lat);
+  const lon1 = toNumber(a?.lng);
+  const lat2 = toNumber(b?.lat);
+  const lon2 = toNumber(b?.lng);
+  if (lat1 === null || lon1 === null || lat2 === null || lon2 === null) return null;
+  const R = 6371; // km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const aVal =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
+  return R * c;
+}
+
+function estimateTravelMinutes(prev, next) {
+  if (!prev || !next) return 0;
+  const km = haversineDistanceKm(prev, next);
+  if (km !== null) {
+    if (km < 0.8) return 10;
+    if (km < 3) return 18;
+    if (km < 10) return 32;
+    if (km < 30) return 60;
+    if (km < 75) return 95;
+    return 120;
+  }
+  if (prev.cityId && next.cityId && prev.cityId === next.cityId) return 20;
+  return 45;
+}
+
+function computeLeaveBy(prev, next, travelMinutes) {
+  if (!prev?.startTime || !next?.startTime) return '';
+  const travel = Number.isFinite(travelMinutes) ? travelMinutes : estimateTravelMinutes(prev, next);
+  const nextStart = new Date(next.startTime);
+  const leaveBy = new Date(nextStart.getTime() - (travel || 0) * 60000);
+  const formatted = leaveBy.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return travel > 0 ? `Leave by ${formatted} to reach next stop` : '';
+}
+
 function parsePlaceLink(raw) {
   const cleaned = (raw || '').trim();
   if (!cleaned) return {};
@@ -283,7 +329,7 @@ function App() {
   const [selectedDayId, setSelectedDayId] = useState(fallbackTrip.days?.[0]?.id || null);
   const [selectedDayDate, setSelectedDayDate] = useState(fallbackTrip.days?.[0]?.date || '');
   const [tripForm, setTripForm] = useState({ name: '', startDate: '', endDate: '' });
-  const [dayForm, setDayForm] = useState({ date: '', title: '' });
+  const [dayForm, setDayForm] = useState({ date: '', title: '', cityIds: [] });
   const [editingDayId, setEditingDayId] = useState(null);
   const [activityForm, setActivityForm] = useState({ title: '', startTime: '', endTime: '', location: '', category: '', cityId: '' });
   const [editingActivityId, setEditingActivityId] = useState(null);
@@ -340,6 +386,7 @@ function App() {
   const [placeFavoritesOnly, setPlaceFavoritesOnly] = useState(false);
   const [undoPlace, setUndoPlace] = useState(null);
   const [undoTimer, setUndoTimer] = useState(null);
+  const [quickPlaceAdd, setQuickPlaceAdd] = useState({});
   const toast = useToast();
 
   const loadTrips = async () => {
@@ -447,14 +494,16 @@ function App() {
         label: `${format(date, 'EEE dd MMM')}${existing?.title ? ` — ${existing.title}` : ''}`,
         value: existing ? String(existing.id) : `date:${iso}`,
         date: iso,
-        cityId: existing?.cityId || null,
+        cityId: existing?.cityId || existing?.cityIds?.[0] || null,
       });
     }
     return options;
   })();
   const cityColors = ['brand.300', 'indigo.500', 'green.400', 'orange.400', 'pink.400', 'cyan.400'];
   const cityColorMap = new Map(cities.map((c, idx) => [c.id, cityColors[idx % cityColors.length]]));
-  const visibleDays = cityFilter ? sortedDays.filter((d) => d.cityId === cityFilter) : sortedDays;
+  const visibleDays = cityFilter
+    ? sortedDays.filter((d) => (Array.isArray(d.cityIds) ? d.cityIds.includes(cityFilter) : d.cityId === cityFilter))
+    : sortedDays;
 
   useEffect(() => {
     loadTrips();
@@ -772,6 +821,33 @@ function App() {
     }
   };
 
+  const handleQuickAddPlaceToDay = async (day) => {
+    if (!day?.id) return;
+    const entry = quickPlaceAdd[day.id] || {};
+    const placeId = entry.placeId ? Number(entry.placeId) : null;
+    const place = places.find((p) => p.id === placeId);
+    if (!place) {
+      toast({ status: 'warning', title: 'Pick a place to add' });
+      return;
+    }
+    const time = entry.time || '';
+    const dateIso = day.date?.slice(0, 10) || '';
+    const startTime = time && dateIso ? `${dateIso}T${time}` : null;
+    try {
+      await promotePlace(place.id, {
+        dayId: Number(day.id),
+        startTime,
+        location: place.address || place.name,
+        category: place.tag || null,
+      });
+      await loadTrips();
+      setQuickPlaceAdd((prev) => ({ ...prev, [day.id]: { placeId: '', time: '' } }));
+      toast({ status: 'success', title: 'Added place to day' });
+    } catch (err) {
+      toast({ status: 'error', title: 'Failed to add place to day', description: err.message });
+    }
+  };
+
   const togglePlaceFavorite = (placeId) => {
     if (!placeId) return;
     setPlaceFavorites((prev) => {
@@ -845,12 +921,20 @@ function App() {
     }
     try {
       if (editingDayId) {
-        await updateDay(editingDayId, { title: dayForm.title || null });
+        await updateDay(editingDayId, {
+          title: dayForm.title || null,
+          cityIds: Array.isArray(dayForm.cityIds) ? dayForm.cityIds.map((c) => Number(c)) : [],
+        });
       } else {
-        await createDay(trip.id, { date: dayForm.date, title: dayForm.title || null, cityId: cityFilter || null });
+        await createDay(trip.id, {
+          date: dayForm.date,
+          title: dayForm.title || null,
+          cityIds: Array.isArray(dayForm.cityIds) ? dayForm.cityIds.map((c) => Number(c)) : [],
+          cityId: null,
+        });
       }
       await loadTrips();
-      setDayForm({ date: '', title: '' });
+      setDayForm({ date: '', title: '', cityIds: [] });
       setEditingDayId(null);
       dayModal.onClose();
       toast({ status: 'success', title: editingDayId ? 'Day updated' : 'Day added' });
@@ -1083,7 +1167,10 @@ function App() {
                         )
                       ).map((id) => cities.find((c) => c.id === id)).filter(Boolean);
                       const dayCities = day.city ? [day.city] : [];
-                      const allCities = Array.from(new Map([...dayCities, ...activityCities].map((c) => [c.id, c])).values());
+                      const multiCities = (day.cityIds || [])
+                        .map((id) => cities.find((c) => c.id === id))
+                        .filter(Boolean);
+                      const allCities = Array.from(new Map([...dayCities, ...multiCities, ...activityCities].map((c) => [c.id, c])).values());
                       const totalDuration = (day.activities || []).reduce(
                         (sum, act) => sum + activityDurationMinutes(act),
                         0
@@ -1125,6 +1212,7 @@ function App() {
                                     setDayForm({
                                       date: day.date?.slice(0, 10) || '',
                                       title: day.title || '',
+                                      cityIds: (day.cityIds || (day.cityId ? [day.cityId] : [])).map((id) => String(id)),
                                     });
                                     dayModal.onOpen();
                                   }}
@@ -1134,10 +1222,71 @@ function App() {
                               </Flex>
                             </HStack>
                           </Flex>
+                          <Stack spacing={2} mb={3}>
+                            <HStack spacing={2} flexWrap="wrap" align="flex-end">
+                              <FormControl minW="220px">
+                                <FormLabel fontSize="sm" color="whiteAlpha.700">
+                                  Add a saved place
+                                </FormLabel>
+                                <Select
+                                  placeholder="Choose place"
+                                  value={quickPlaceAdd[day.id]?.placeId || ''}
+                                  onChange={(e) =>
+                                    setQuickPlaceAdd((prev) => ({
+                                      ...prev,
+                                      [day.id]: { ...(prev[day.id] || {}), placeId: e.target.value },
+                                    }))
+                                  }
+                                >
+                                  {places
+                                    .filter((p) => {
+                                      const allowedCities = Array.isArray(day.cityIds) && day.cityIds.length > 0 ? day.cityIds : day.cityId ? [day.cityId] : [];
+                                      if (allowedCities.length === 0) return true;
+                                      return allowedCities.includes(p.cityId);
+                                    })
+                                    .map((p) => (
+                                      <option key={`quick-place-${p.id}`} value={p.id}>
+                                        {p.name} {p.city ? `· ${p.city.name}` : ''}
+                                      </option>
+                                    ))}
+                                </Select>
+                              </FormControl>
+                              <FormControl maxW="160px">
+                                <FormLabel fontSize="sm" color="whiteAlpha.700">
+                                  Time (optional)
+                                </FormLabel>
+                                <Input
+                                  type="time"
+                                  value={quickPlaceAdd[day.id]?.time || ''}
+                                  onChange={(e) =>
+                                    setQuickPlaceAdd((prev) => ({
+                                      ...prev,
+                                      [day.id]: { ...(prev[day.id] || {}), time: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </FormControl>
+                              <Button
+                                mt={5}
+                                size="sm"
+                                variant="solid"
+                                onClick={() => handleQuickAddPlaceToDay(day)}
+                                isDisabled={!places || places.length === 0}
+                              >
+                                Add to day
+                              </Button>
+                            </HStack>
+                          </Stack>
                           <ActivitiesList
                             activities={day.activities || []}
                             cities={cities}
                             dayOverbooked={dayOverbooked}
+                            travelEstimate={(idx, acts) =>
+                              idx === 0 ? 0 : estimateTravelMinutes(acts[idx - 1], acts[idx])
+                            }
+                            leaveBy={(idx, acts, travelMinutes) =>
+                              idx === 0 ? '' : computeLeaveBy(acts[idx - 1], acts[idx], travelMinutes)
+                            }
                             onEdit={(act) => {
                               setSelectedDayId(day.id);
                               setEditingActivityId(act.id);
@@ -1147,7 +1296,7 @@ function App() {
                                 endTime: act.endTime ? new Date(act.endTime).toISOString().slice(0, 16) : '',
                                 location: act.location || '',
                                 category: act.category || '',
-                                cityId: act.cityId || act.city?.id || day.cityId || '',
+                                cityId: act.cityId || act.city?.id || day.cityId || day.cityIds?.[0] || '',
                               });
                               activityModal.onOpen();
                             }}
@@ -1313,11 +1462,20 @@ function App() {
                                     Overbooked
                                   </Tag>
                                 )}
-                                {dayData?.city && (
-                                  <Tag bg={cityColorMap.get(dayData.city.id)} color={cityColorMap.get(dayData.city.id) ? '#0c0c0c' : undefined}>
-                                    {dayData.city.name}
-                                  </Tag>
-                                )}
+                                {(() => {
+                                  const calendarCities = [
+                                    ...(dayData?.city ? [dayData.city] : []),
+                                    ...((dayData?.cityIds || [])
+                                      .map((id) => cities.find((c) => c.id === id))
+                                      .filter(Boolean)),
+                                  ];
+                                  const uniqCities = Array.from(new Map(calendarCities.map((c) => [c.id, c])).values());
+                                  return uniqCities.map((c) => (
+                                    <Tag key={`cal-city-${dayData?.id}-${c.id}`} bg={cityColorMap.get(c.id)} color={cityColorMap.get(c.id) ? '#0c0c0c' : undefined}>
+                                      {c.name}
+                                    </Tag>
+                                  ));
+                                })()}
                                 <Button
                                   size="xs"
                                   variant="ghost"
@@ -1330,7 +1488,7 @@ function App() {
                       startTime: dayData ? `${format(dayData.date, 'yyyy-MM-dd')}T` : `${format(dayDate, 'yyyy-MM-dd')}T`,
                       location: '',
                       category: '',
-                      cityId: dayData?.cityId || '',
+                      cityId: dayData?.cityId || dayData?.cityIds?.[0] || '',
                     });
                     activityModal.onOpen();
                   }}
@@ -1375,7 +1533,7 @@ function App() {
                                         startTime: act.startTime ? new Date(act.startTime).toISOString().slice(0, 16) : '',
                                         location: act.location || '',
                                         category: act.category || '',
-                                        cityId: act.city?.id || dayData?.cityId || '',
+                                        cityId: act.city?.id || dayData?.cityId || dayData?.cityIds?.[0] || '',
                                       });
                                       activityModal.onOpen();
                                     }}
@@ -1690,7 +1848,7 @@ function App() {
           </ModalFooter>
         </ModalContent>
       </Modal>
-      <Modal isOpen={dayModal.isOpen} onClose={() => { setEditingDayId(null); setDayForm({ date: '', title: '' }); dayModal.onClose(); }} isCentered>
+      <Modal isOpen={dayModal.isOpen} onClose={() => { setEditingDayId(null); setDayForm({ date: '', title: '', cityIds: [] }); dayModal.onClose(); }} isCentered>
         <ModalOverlay />
         <ModalContent bg="#0f1624" border="1px solid rgba(255,255,255,0.08)">
           <ModalHeader>{editingDayId ? 'Edit day' : 'Add day'}</ModalHeader>
@@ -1706,13 +1864,28 @@ function App() {
                   isDisabled={Boolean(editingDayId)}
                 />
               </FormControl>
+                <FormControl>
+                  <FormLabel>Title</FormLabel>
+                  <Input
+                    placeholder="Kyoto temples"
+                    value={dayForm.title}
+                    onChange={(e) => setDayForm((f) => ({ ...f, title: e.target.value }))}
+                  />
+                </FormControl>
               <FormControl>
-                <FormLabel>Title</FormLabel>
-                <Input
-                  placeholder="Kyoto temples"
-                  value={dayForm.title}
-                  onChange={(e) => setDayForm((f) => ({ ...f, title: e.target.value }))}
-                />
+                <FormLabel>Cities for this day</FormLabel>
+                <CheckboxGroup
+                  value={dayForm.cityIds}
+                  onChange={(vals) => setDayForm((f) => ({ ...f, cityIds: vals }))}
+                >
+                  <Stack direction="column" spacing={1}>
+                    {(cities || []).map((c) => (
+                      <Checkbox key={`day-city-${c.id}`} value={String(c.id)} colorScheme="brand">
+                        {c.name}
+                      </Checkbox>
+                    ))}
+                  </Stack>
+                </CheckboxGroup>
               </FormControl>
             </Stack>
           </ModalBody>
@@ -1722,7 +1895,7 @@ function App() {
               mr={3}
               onClick={() => {
                 setEditingDayId(null);
-                setDayForm({ date: '', title: '' });
+                setDayForm({ date: '', title: '', cityIds: [] });
                 dayModal.onClose();
               }}
             >
@@ -1778,13 +1951,15 @@ function App() {
                   onChange={(e) => setActivityForm((f) => ({ ...f, title: e.target.value }))}
                 />
               </FormControl>
-              <HStack>
+              <Stack direction="column" spacing={3}>
                 <FormControl>
                   <FormLabel>Start time</FormLabel>
                   <Input
                     type="datetime-local"
                     value={activityForm.startTime}
                     onChange={(e) => setActivityForm((f) => ({ ...f, startTime: e.target.value }))}
+                    w="100%"
+                    minW={0}
                   />
                 </FormControl>
                 <FormControl>
@@ -1793,16 +1968,20 @@ function App() {
                     type="datetime-local"
                     value={activityForm.endTime}
                     onChange={(e) => setActivityForm((f) => ({ ...f, endTime: e.target.value }))}
+                    w="100%"
+                    minW={0}
                   />
                 </FormControl>
-              </HStack>
-              <HStack>
+              </Stack>
+              <Stack direction={{ base: 'column', md: 'row' }} spacing={3}>
                 <FormControl>
                   <FormLabel>Location</FormLabel>
                   <Input
                     placeholder="Shibuya"
                     value={activityForm.location}
                     onChange={(e) => setActivityForm((f) => ({ ...f, location: e.target.value }))}
+                    w="100%"
+                    minW={0}
                   />
                 </FormControl>
                 <FormControl>
@@ -1811,9 +1990,11 @@ function App() {
                     placeholder="food"
                     value={activityForm.category}
                     onChange={(e) => setActivityForm((f) => ({ ...f, category: e.target.value }))}
+                    w="100%"
+                    minW={0}
                   />
                 </FormControl>
-              </HStack>
+              </Stack>
               <FormControl>
                 <FormLabel>City</FormLabel>
                 <Select

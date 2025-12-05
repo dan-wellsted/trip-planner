@@ -53,6 +53,7 @@ model Day {
   date      DateTime
   title     String?
   note      String?
+  cityIdsJson String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
