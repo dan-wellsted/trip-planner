@@ -491,6 +491,13 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (user) {
+      loadTrips();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, params.tripId]);
+
+  useEffect(() => {
     try {
       const stored = localStorage.getItem('placeFavorites');
       if (stored) {
@@ -1399,7 +1406,7 @@ function App() {
           </ButtonGroup>
           <Routes>
             <Route
-              path="/"
+              path="/trip/:tripId"
               element={
                 <Box>
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
@@ -1677,7 +1684,7 @@ function App() {
             />
 
             <Route
-              path="/calendar"
+              path="/trip/:tripId/calendar"
               element={
                 <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
                   <CardHeader pb={2}>
@@ -1809,7 +1816,7 @@ function App() {
             />
 
             <Route
-              path="/places"
+              path="/trip/:tripId/places"
               element={
                 <Box>
                   {undoPlace && (
@@ -1910,7 +1917,7 @@ function App() {
             />
 
             <Route
-              path="/ideas"
+              path="/trip/:tripId/ideas"
               element={
                 <IdeasBoard
                 ideas={ideas}
