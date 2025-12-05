@@ -1929,8 +1929,8 @@ function App() {
                 }}
                 onDelete={handleDeletePlace}
               />
-                </Box>
-              }
+            </Box>
+            }
             />
 
             <Route
