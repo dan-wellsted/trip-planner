@@ -1829,7 +1829,7 @@ function App() {
                   onChange={(e) => setActivityForm((f) => ({ ...f, title: e.target.value }))}
                 />
               </FormControl>
-              <Stack direction={{ base: 'column', md: 'row' }} spacing={3}>
+              <Stack direction="column" spacing={3}>
                 <FormControl>
                   <FormLabel>Start time</FormLabel>
                   <Input
