@@ -510,20 +510,21 @@ function App() {
     }
   };
 
-  const handleAuthSubmit = async () => {
+  const handleAuthSubmit = async (modeOverride) => {
+    const mode = modeOverride || authForm.mode || 'login';
     if (!authForm.email || !authForm.password) {
       toast({ status: 'warning', title: 'Email and password required' });
       return;
     }
     try {
-      if (authForm.mode === 'register') {
+      if (mode === 'register') {
         await register({ email: authForm.email, password: authForm.password, name: authForm.name || null });
       } else {
         await login({ email: authForm.email, password: authForm.password });
       }
       const meResp = await fetchMe();
       setUser(meResp);
-      toast({ status: 'success', title: authForm.mode === 'register' ? 'Registered' : 'Logged in' });
+      toast({ status: 'success', title: mode === 'register' ? 'Registered' : 'Logged in' });
       await loadTrips();
     } catch (err) {
       toast({ status: 'error', title: 'Auth failed', description: err.message || 'Unable to sign in' });
@@ -1174,7 +1175,8 @@ function App() {
             />
           </Stack>
           <HStack spacing={3}>
-            <Button onClick={handleAuthSubmit}>Login / Register</Button>
+            <Button onClick={() => handleAuthSubmit('login')}>Login</Button>
+            <Button variant="ghost" onClick={() => handleAuthSubmit('register')}>Register</Button>
           </HStack>
         </Stack>
       </Container>
