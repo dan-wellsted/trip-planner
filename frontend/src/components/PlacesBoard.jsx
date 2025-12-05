@@ -455,6 +455,7 @@ const PlacesBoard = ({
                       })}
                       eventHandlers={{
                         click: () => {
+                          if (!map) return;
                           const expansionZoom = Math.min(clusterIndex.getClusterExpansionZoom(clusterId), 18);
                           map.flyTo([lat, lng], expansionZoom);
                         },
