@@ -81,6 +81,7 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - Weather + local time: per-city weather, current local time, last-train cutoffs for key lines.
 - Checklists tied to days: pre-day todos and “next 24h” strip for reminders.
 - Sharing: read-only share links or invites; optional album link for Moments.
+- Authentication + multi-user: sign up/login, user-owned trips, session cookies or JWT, per-user data isolation, and invites/roles so multiple people can view/edit the same trip.
 - Smart reminders: push/email for flights/hotels/timed tickets; “leave by” alerts using transit times.
 - Offline-first: cache itinerary/PNRs/checklists for subway use.
 - Seed/import: CSV/ICS paste for flights/hotels to auto-create activities.
