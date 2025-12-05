@@ -197,14 +197,18 @@ const PlacesBoard = ({
 
   const sorted = useMemo(() => sortPlaces(filtered, sort, cities), [filtered, sort, cities]);
   const grouped = useMemo(() => groupPlaces(sorted, groupBy, cities), [sorted, groupBy, cities]);
-  const placesWithCoords = sorted.filter(
-    (p) =>
-      p.lat !== null &&
-      p.lat !== undefined &&
-      p.lng !== null &&
-      p.lng !== undefined &&
-      !Number.isNaN(Number(p.lat)) &&
-      !Number.isNaN(Number(p.lng))
+  const placesWithCoords = useMemo(
+    () =>
+      sorted.filter(
+        (p) =>
+          p.lat !== null &&
+          p.lat !== undefined &&
+          p.lng !== null &&
+          p.lng !== undefined &&
+          !Number.isNaN(Number(p.lat)) &&
+          !Number.isNaN(Number(p.lng))
+      ),
+    [sorted]
   );
   const points = useMemo(
     () =>
@@ -243,7 +247,7 @@ const PlacesBoard = ({
     };
   }, [map, clusterIndex]);
   const defaultCenter = placesWithCoords.length
-    ? [Number(placesWithCoords[0].lat), Number(placesWithCoords[0].lng)]
+    ? [Number(placesWithCoords[Math.floor(placesWithCoords.length / 2)].lat), Number(placesWithCoords[Math.floor(placesWithCoords.length / 2)].lng)]
     : [35.6762, 139.6503];
   const total = filtered.length;
 
