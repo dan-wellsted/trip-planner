@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { addDays, differenceInCalendarDays, format } from 'date-fns';
-import { Routes, Route, useLocation, Link as RouterLink } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate, Navigate, Link as RouterLink } from 'react-router-dom';
 import {
   Badge,
   Box,
@@ -71,6 +71,11 @@ import {
   deletePlace,
   promotePlace,
   updateDay,
+  register,
+  login,
+  logout as apiLogout,
+  me as fetchMe,
+  addTripMember,
 } from './api';
 import BookingsCard from './components/BookingsCard';
 import IdeasBoard from './components/IdeasBoard';
@@ -322,7 +327,10 @@ function parsePlaceLink(raw) {
 
 function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [trip, setTrip] = useState(fallbackTrip);
+  const [trips, setTrips] = useState([]);
+  const [user, setUser] = useState(null);
   const [status, setStatus] = useState('Offline demo data');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -387,7 +395,14 @@ function App() {
   const [undoPlace, setUndoPlace] = useState(null);
   const [undoTimer, setUndoTimer] = useState(null);
   const [quickPlaceAdd, setQuickPlaceAdd] = useState({});
+  const [authForm, setAuthForm] = useState({ email: '', password: '', name: '', mode: 'login' });
+  const [memberForm, setMemberForm] = useState({ email: '', role: 'editor' });
   const toast = useToast();
+
+  const tripIdFromPath = useMemo(() => {
+    const match = location.pathname.match(/\/trip\/(\d+)/);
+    return match ? Number(match[1]) : null;
+  }, [location.pathname]);
 
   const loadTrips = async () => {
     const safeSetError = (msg) => setError((prev) => prev || msg);
@@ -404,9 +419,12 @@ function App() {
     try {
       setLoading(true);
       setError(null);
-      const trips = await fetchTripsApi();
-      if (Array.isArray(trips) && trips.length > 0) {
-        const firstTrip = trips[0];
+      const tripsResp = await fetchTripsApi();
+      setTrips(Array.isArray(tripsResp) ? tripsResp : []);
+      const idParam = tripIdFromPath;
+      if (Array.isArray(tripsResp) && tripsResp.length > 0) {
+        const desired = idParam ? tripsResp.find((t) => t.id === idParam) : null;
+        const firstTrip = desired || (trip && tripsResp.find((t) => t.id === trip.id)) || tripsResp[0];
         setTrip(firstTrip);
         setCities(firstTrip.cities || []);
         setSelectedDayId(firstTrip.days?.[0]?.id || null);
@@ -431,17 +449,66 @@ function App() {
         setPlaces([]);
         setSelectedDayId(null);
         setSelectedDayDate('');
+        if (idParam) {
+          navigate('/');
+        }
       }
     } catch (err) {
-      console.warn('Falling back to demo data', err);
-      setStatus('Offline demo data');
-      setError('API unavailable, showing demo data.');
-      setSelectedDayId(fallbackTrip.days?.[0]?.id || null);
-      setSelectedDayDate(fallbackTrip.days?.[0]?.date || fallbackTrip.startDate || '');
+      if (err?.status === 401) {
+        setStatus('Login to view your trips');
+        setTrip(null);
+        setTrips([]);
+        setCities([]);
+        setBookings([]);
+        setIdeas([]);
+        setPlaces([]);
+        setSelectedDayId(null);
+        setSelectedDayDate('');
+        if (tripIdFromPath) {
+          navigate('/');
+        }
+      } else {
+        console.warn('Falling back to demo data', err);
+        setStatus('Offline demo data');
+        setError('API unavailable.');
+        setTrip(null);
+        setTrips([]);
+        setSelectedDayId(null);
+        setSelectedDayDate('');
+        if (tripIdFromPath) {
+          navigate('/');
+        }
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const meResp = await fetchMe();
+        setUser(meResp);
+        await loadTrips();
+      } catch (err) {
+        setUser(null);
+        setTrips([]);
+        setTrip(null);
+        setStatus('Login to view your trips');
+        setCities([]);
+        setBookings([]);
+        setIdeas([]);
+        setPlaces([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadTrips();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, tripIdFromPath]);
 
   useEffect(() => {
     try {
@@ -464,6 +531,72 @@ function App() {
     } catch (err) {
       console.warn('Failed to persist favorites', err);
     }
+  };
+
+  const handleAuthSubmit = async (modeOverride) => {
+    const mode = modeOverride || authForm.mode || 'login';
+    if (!authForm.email || !authForm.password) {
+      toast({ status: 'warning', title: 'Email and password required' });
+      return;
+    }
+    try {
+      if (mode === 'register') {
+        await register({ email: authForm.email, password: authForm.password, name: authForm.name || null });
+      } else {
+        await login({ email: authForm.email, password: authForm.password });
+      }
+      const meResp = await fetchMe();
+      setUser(meResp);
+      toast({ status: 'success', title: mode === 'register' ? 'Registered' : 'Logged in' });
+      await loadTrips();
+    } catch (err) {
+      toast({ status: 'error', title: 'Auth failed', description: err.message || 'Unable to sign in' });
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiLogout();
+    } catch (err) {
+      // ignore
+    }
+    setUser(null);
+    await loadTrips();
+  };
+
+  const handleAddMember = async () => {
+    if (!requireEditor()) return;
+    if (!trip?.id) {
+      toast({ status: 'warning', title: 'Create a trip first' });
+      return;
+    }
+    if (!memberForm.email) {
+      toast({ status: 'warning', title: 'Email required' });
+      return;
+    }
+    try {
+      await addTripMember(trip.id, { email: memberForm.email, role: memberForm.role || 'editor' });
+      toast({ status: 'success', title: 'Member added/updated' });
+      setMemberForm({ email: '', role: 'editor' });
+      await loadTrips();
+    } catch (err) {
+      toast({ status: 'error', title: 'Failed to add member', description: err.message });
+    }
+  };
+
+  const currentRole = useMemo(() => {
+    if (!user || !trip) return null;
+    if (trip.ownerId && trip.ownerId === user.id) return 'owner';
+    const mem = (trip.memberships || []).find((m) => m.userId === user.id);
+    return mem?.role || null;
+  }, [trip, user]);
+  const canEditTrip = !user || !trip ? true : currentRole !== 'viewer';
+  const requireEditor = () => {
+    if (!canEditTrip) {
+      toast({ status: 'warning', title: 'View-only access', description: 'You do not have edit rights on this trip.' });
+      return false;
+    }
+    return true;
   };
 
   const sortedDays = (trip?.days || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -505,22 +638,21 @@ function App() {
     ? sortedDays.filter((d) => (Array.isArray(d.cityIds) ? d.cityIds.includes(cityFilter) : d.cityId === cityFilter))
     : sortedDays;
 
-  useEffect(() => {
-    loadTrips();
-  }, []);
-
   const handleCreateTrip = async () => {
     if (!tripForm.name) {
       toast({ status: 'warning', title: 'Trip name required' });
       return;
     }
     try {
-      await createTrip({
+      const created = await createTrip({
         name: tripForm.name,
         startDate: tripForm.startDate || null,
         endDate: tripForm.endDate || null,
       });
       await loadTrips();
+      if (created?.id) {
+        navigate(`/trip/${created.id}`);
+      }
       tripModal.onClose();
       setTripForm({ name: '', startDate: '', endDate: '' });
       toast({ status: 'success', title: 'Trip created' });
@@ -530,6 +662,7 @@ function App() {
   };
 
   const handleCreateBooking = async () => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -590,6 +723,7 @@ function App() {
   };
 
   const handleCreateOrUpdateIdea = async () => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -628,6 +762,7 @@ function App() {
   };
 
   const handleDeleteIdea = async (id) => {
+    if (!requireEditor()) return;
     try {
       await deleteIdea(id);
       const fetchedIdeas = await fetchIdeas(trip.id);
@@ -640,6 +775,7 @@ function App() {
   };
 
   const handleCreateOrUpdateCity = async () => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -681,6 +817,7 @@ function App() {
   };
 
   const handleDeleteCity = async (cityId) => {
+    if (!requireEditor()) return;
     try {
       await deleteCity(cityId);
       const fetched = await fetchCities(trip.id);
@@ -695,6 +832,7 @@ function App() {
   };
 
   const handleReorderCities = async (movingId, overId) => {
+    if (!requireEditor()) return;
     const current = [...cities];
     const oldIndex = current.findIndex((c) => c.id === movingId);
     const newIndex = current.findIndex((c) => c.id === overId);
@@ -711,6 +849,7 @@ function App() {
   };
 
   const handleDeletePlace = async (placeId) => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -770,6 +909,7 @@ function App() {
   };
 
   const handlePromotePlace = async () => {
+    if (!requireEditor()) return;
     if (!placePromote.placeId || !placePromote.dayId) {
       toast({ status: 'warning', title: 'Pick a day to promote to' });
       return;
@@ -797,6 +937,7 @@ function App() {
   };
 
   const handleQuickPromotePlace = async (place, dayId) => {
+    if (!requireEditor()) return;
     if (!place || !dayId) {
       toast({ status: 'warning', title: 'Pick a day to promote to' });
       return;
@@ -849,6 +990,10 @@ function App() {
   };
 
   const togglePlaceFavorite = (placeId) => {
+    if (!canEditTrip) {
+      toast({ status: 'warning', title: 'View-only access', description: 'You do not have edit rights on this trip.' });
+      return;
+    }
     if (!placeId) return;
     setPlaceFavorites((prev) => {
       const exists = prev.includes(placeId);
@@ -859,6 +1004,7 @@ function App() {
   };
 
   const handleUndoDeletePlace = async () => {
+    if (!requireEditor()) return;
     if (!undoPlace || !trip?.id) return;
     const payload = {
       name: undoPlace.name,
@@ -911,6 +1057,7 @@ function App() {
   };
 
   const handleCreateDay = async () => {
+    if (!requireEditor()) return;
     if (!trip?.id) {
       toast({ status: 'warning', title: 'Create a trip first' });
       return;
@@ -944,6 +1091,7 @@ function App() {
   };
 
   const handleCreateActivity = async () => {
+    if (!requireEditor()) return;
     if (!selectedDayId && !selectedDayDate) {
       toast({ status: 'warning', title: 'Select a day first' });
       return;
@@ -978,6 +1126,7 @@ function App() {
   };
 
   const handleUpdateActivity = async () => {
+    if (!requireEditor()) return;
     if (!editingActivityId) return;
     try {
       await updateActivity(editingActivityId, {
@@ -999,6 +1148,7 @@ function App() {
   };
 
   const handleDeleteActivity = async (activityId) => {
+    if (!requireEditor()) return;
     try {
       await deleteActivity(activityId);
       await loadTrips();
@@ -1042,23 +1192,183 @@ function App() {
     }
   };
 
-  return (
-    <Container maxW="6xl" py={{ base: 8, md: 12 }}>
-      <Stack spacing={6}>
-        <Stack spacing={3}>
+  if (!user && status.includes('Login')) {
+    if (location.pathname !== '/login') {
+      return <Navigate to="/login" replace />;
+    }
+    return (
+      <Container maxW="4xl" py={{ base: 10, md: 16 }}>
+        <Stack spacing={6} align="flex-start">
+          <Badge colorScheme="brand" px={3} py={1} borderRadius="full">
+            Trip Companion
+          </Badge>
+          <Heading size="2xl">Plan trips together</Heading>
+          <Text color="whiteAlpha.800">
+            Sign in to access trips, days, places, and ideas. Your data stays scoped to your account.
+          </Text>
+          <Stack direction={{ base: 'column', md: 'row' }} spacing={3} w="100%">
+            <Input
+              placeholder="Email"
+              value={authForm.email}
+              onChange={(e) => setAuthForm((f) => ({ ...f, email: e.target.value }))}
+            />
+            <Input
+              type="password"
+              placeholder="Password"
+              value={authForm.password}
+              onChange={(e) => setAuthForm((f) => ({ ...f, password: e.target.value }))}
+            />
+            <Input
+              placeholder="Name (optional)"
+              value={authForm.name}
+              onChange={(e) => setAuthForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </Stack>
+          <HStack spacing={3}>
+            <Button onClick={() => handleAuthSubmit('login')}>Login</Button>
+            <Button variant="ghost" onClick={() => handleAuthSubmit('register')}>Register</Button>
+          </HStack>
+        </Stack>
+      </Container>
+    );
+  }
+
+  const isTripRoute = Boolean(tripIdFromPath);
+
+  const navBar = (activeTripId) => (
+    <ButtonGroup variant="ghost" spacing={2} mb={4}>
+      {[
+        { label: 'Dashboard', path: `/trip/${activeTripId}` },
+        { label: 'Calendar', path: `/trip/${activeTripId}/calendar` },
+        { label: 'Places', path: `/trip/${activeTripId}/places` },
+        { label: 'Ideas', path: `/trip/${activeTripId}/ideas` },
+      ].map((item) => {
+        const normalizedPath = (location.pathname || '/').replace(/\/+$/, '') || '/';
+        const active = normalizedPath === item.path || normalizedPath.startsWith(`${item.path}`);
+        return (
+          <Button
+            key={item.path}
+            as={RouterLink}
+            to={item.path}
+            px={4}
+            py={2}
+            borderRadius="md"
+            bg={active ? 'indigo.600' : 'whiteAlpha.100'}
+            color={active ? 'white' : 'whiteAlpha.800'}
+            _hover={{ bg: 'whiteAlpha.200' }}
+          >
+            {item.label}
+          </Button>
+        );
+      })}
+      <Button as={RouterLink} to="/" variant="ghost" px={4} py={2}>
+        Back to trips
+      </Button>
+    </ButtonGroup>
+  );
+
+  if (!isTripRoute) {
+    return (
+      <Container maxW="6xl" py={{ base: 8, md: 12 }}>
+        <Flex justify="space-between" align="center" mb={4} wrap="wrap" gap={3}>
           <HStack spacing={3}>
             <Badge colorScheme="brand" px={3} py={1} borderRadius="full">
-              Japan Companion
+              Trip Companion
             </Badge>
             <Tag colorScheme={status.includes('Live') ? 'green' : 'purple'} variant="subtle">
               {status}
             </Tag>
           </HStack>
+          {user ? (
+            <HStack spacing={3}>
+              <Tag colorScheme="green" variant="subtle">
+                {user.email}
+              </Tag>
+              <Button size="sm" onClick={handleLogout}>
+                Logout
+              </Button>
+            </HStack>
+          ) : null}
+        </Flex>
+        <Stack spacing={6}>
+          <Heading size="xl">Your trips</Heading>
+          {trips.length > 0 ? (
+            <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
+              <CardBody>
+                <Stack spacing={3}>
+                  {trips.map((t) => (
+                    <Flex key={`triplist-${t.id}`} align="center" justify="space-between" p={3} borderRadius="12px" bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.08)">
+                      <Box>
+                        <Text fontWeight="semibold">{t.name}</Text>
+                        <Text color="whiteAlpha.700" fontSize="sm">
+                          {t.startDate ? format(new Date(t.startDate), 'MMM d') : 'No dates'} {t.endDate ? `– ${format(new Date(t.endDate), 'MMM d')}` : ''}
+                        </Text>
+                      </Box>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (!t?.id) return;
+                        setTrip(t);
+                        setCities(t.cities || []);
+                        setSelectedDayId(t.days?.[0]?.id || null);
+                        setSelectedDayDate(t.days?.[0]?.date || t.startDate || '');
+                        navigate(`/trip/${t.id}`);
+                      }}
+                    >
+                      Open
+                    </Button>
+                    </Flex>
+                  ))}
+                </Stack>
+              </CardBody>
+            </Card>
+          ) : (
+            <Text color="whiteAlpha.700">No trips yet.</Text>
+          )}
+          <Button size="md" onClick={tripModal.onOpen}>
+            + New trip
+          </Button>
+        </Stack>
+      </Container>
+    );
+  }
+
+  const activeTripId = tripIdFromPath || (trip?.id ? String(trip.id) : '');
+
+  return (
+    <Container maxW="6xl" py={{ base: 8, md: 12 }}>
+      <Flex justify="space-between" align="center" mb={4} wrap="wrap" gap={3}>
+        <HStack spacing={3}>
+          <Badge colorScheme="brand" px={3} py={1} borderRadius="full">
+            Trip Companion
+          </Badge>
+          <Tag colorScheme={status.includes('Live') ? 'green' : 'purple'} variant="subtle">
+            {status}
+          </Tag>
+          {currentRole && (
+            <Tag colorScheme={currentRole === 'viewer' ? 'yellow' : 'green'} variant="subtle">
+              Role: {currentRole}
+            </Tag>
+          )}
+        </HStack>
+        {user ? (
+          <HStack spacing={3}>
+            <Tag colorScheme="green" variant="subtle">
+              {user.email}
+            </Tag>
+            <Button size="sm" onClick={handleLogout}>
+              Logout
+            </Button>
+          </HStack>
+        ) : null}
+      </Flex>
+      <Stack spacing={6}>
+        <Stack spacing={3}>
           <Heading size="2xl" letterSpacing="-0.5px">
             {trip?.name || 'Your adventure'}
           </Heading>
           <Text color="whiteAlpha.800" maxW="3xl">
-            Keep itinerary, packing, spend, and photo drops in one place. Built for quick train glances and late-night ramen runs.
+            Keep itinerary, packing, spend, and photo drops in one place. Built for quick glances on the move.
           </Text>
           {error && (
             <Text color="red.300" fontSize="sm">
@@ -1070,48 +1380,48 @@ function App() {
               Loading live data…
             </Text>
           )}
-          <HStack spacing={2} wrap="wrap">
-            <Button
-              size="sm"
-              variant={cityFilter === null ? 'solid' : 'ghost'}
-              bg={cityFilter === null ? 'whiteAlpha.300' : 'whiteAlpha.200'}
-              color={cityFilter === null ? '#0c0c0c' : 'white'}
-              _hover={{ bg: 'whiteAlpha.300' }}
-              onClick={() => setCityFilter(null)}
-            >
-              All cities
-            </Button>
-            {(cities || []).map((city) => (
-              <Button
-                key={city.id}
-                size="sm"
-                variant={cityFilter === city.id ? 'solid' : 'ghost'}
-                bg={cityFilter === city.id ? cityColorMap.get(city.id) || 'indigo.600' : 'whiteAlpha.200'}
-                color={cityFilter === city.id ? '#0c0c0c' : 'white'}
-                _hover={{ bg: 'whiteAlpha.300' }}
-                onClick={() => setCityFilter(cityFilter === city.id ? null : city.id)}
-              >
-                {city.name} {city.startDate ? `· ${format(new Date(city.startDate), 'MMM d')}` : ''}
-              </Button>
-            ))}
-            <Button size="sm" variant="ghost" onClick={() => cityModal.onOpen()}>
-              Manage cities
-            </Button>
-          </HStack>
-          <HStack spacing={3} flexWrap="wrap">
-            <Button size="md" onClick={tripModal.onOpen}>
-              + New trip
-            </Button>
-            <Button size="md" variant="ghost" onClick={dayModal.onOpen}>
-              + Add day
-            </Button>
-            <Button size="md" variant="ghost" onClick={activityModal.onOpen}>
-              + Add activity
-            </Button>
-            <Button size="md" variant="ghost" onClick={expenseModal.onOpen}>
-              + Add expense
-            </Button>
-          </HStack>
+          {trips.length > 0 && (
+            <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)" mt={2}>
+              <CardHeader pb={2}>
+                <Heading size="sm" color="white">
+                  My trips
+                </Heading>
+                <Text color="whiteAlpha.700" fontSize="sm">
+                  Select a trip to view its planner.
+                </Text>
+              </CardHeader>
+              <CardBody>
+                <Stack spacing={2}>
+                  {trips.map((t) => (
+                    <Flex key={`trip-${t.id}`} align="center" justify="space-between" p={3} borderRadius="12px" bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.08)">
+                      <Box>
+                        <Text fontWeight="semibold">{t.name}</Text>
+                        <Text color="whiteAlpha.700" fontSize="sm">
+                          {t.startDate ? format(new Date(t.startDate), 'MMM d') : 'No dates'} {t.endDate ? `– ${format(new Date(t.endDate), 'MMM d')}` : ''}
+                        </Text>
+                      </Box>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setTrip(t);
+                          setCities(t.cities || []);
+                          setSelectedDayId(t.days?.[0]?.id || null);
+                          setSelectedDayDate(t.days?.[0]?.date || t.startDate || '');
+                          navigate(`/trip/${t.id}`);
+                        }}
+                      >
+                        Open
+                      </Button>
+                    </Flex>
+                  ))}
+                </Stack>
+              </CardBody>
+            </Card>
+          )}
+          {navBar(activeTripId)}
+          <Button as={RouterLink} to="/" variant="link" color="whiteAlpha.800" alignSelf="flex-start">
+            ← Back to trips
+          </Button>
         </Stack>
 
         <Box>
@@ -1145,7 +1455,7 @@ function App() {
           </ButtonGroup>
           <Routes>
             <Route
-              path="/"
+              path="/trip/:tripId"
               element={
                 <Box>
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
@@ -1423,7 +1733,7 @@ function App() {
             />
 
             <Route
-              path="/calendar"
+              path="/trip/:tripId/calendar"
               element={
                 <Card bg="#0f1828" color="whiteAlpha.900" border="1px solid rgba(255,255,255,0.12)">
                   <CardHeader pb={2}>
@@ -1555,7 +1865,7 @@ function App() {
             />
 
             <Route
-              path="/places"
+              path="/trip/:tripId/places"
               element={
                 <Box>
                   {undoPlace && (
@@ -1616,6 +1926,7 @@ function App() {
                 })}
                 onQuickPromote={handleQuickPromotePlace}
                 onAddClick={() => {
+                  if (!requireEditor()) return;
                   if (!trip?.id) {
                     toast({ status: 'warning', title: 'Create a trip first' });
                     return;
@@ -1651,66 +1962,67 @@ function App() {
                 }}
                 onDelete={handleDeletePlace}
               />
-                </Box>
-              }
+            </Box>
+            }
             />
 
             <Route
-              path="/ideas"
-              element={
+              path="/trip/:tripId/ideas"
+              element={(
                 <IdeasBoard
-                ideas={ideas}
-                cities={cities}
-                cityFilter={cityFilter}
-                onFilterChange={(id) => setCityFilter(id)}
-                onAddClick={(idea) => {
-                  if (idea) {
-                    setEditingIdeaId(idea.id);
-                    setIdeaForm({
-                      title: idea.title || '',
-                      link: idea.link || '',
-                      note: idea.note || '',
+                  ideas={ideas}
+                  cities={cities}
+                  cityFilter={cityFilter}
+                  onFilterChange={(id) => setCityFilter(id)}
+                  onAddClick={(idea) => {
+                    if (idea) {
+                      setEditingIdeaId(idea.id);
+                      setIdeaForm({
+                        title: idea.title || '',
+                        link: idea.link || '',
+                        note: idea.note || '',
+                        category: idea.category || '',
+                        cityId: idea.cityId || '',
+                      });
+                    } else {
+                      setEditingIdeaId(null);
+                      setIdeaForm({ title: '', link: '', note: '', category: '', cityId: '' });
+                    }
+                    ideaModal.onOpen();
+                  }}
+                  onDelete={handleDeleteIdea}
+                  onPromote={(idea) => {
+                    setIdeaPromote({
+                      ideaId: idea.id,
+                      dayId: '',
+                      startTime: '',
+                      location: '',
                       category: idea.category || '',
-                      cityId: idea.cityId || '',
                     });
-                  } else {
-                    setEditingIdeaId(null);
-                    setIdeaForm({ title: '', link: '', note: '', category: '', cityId: '' });
-                  }
-                  ideaModal.onOpen();
-                }}
-                onDelete={handleDeleteIdea}
-                onPromote={(idea) => {
-                  setIdeaPromote({
-                    ideaId: idea.id,
-                    dayId: '',
-                    startTime: '',
-                    location: '',
-                    category: idea.category || '',
-                  });
-                  promoteIdeaModal.onOpen();
-                }}
-                onReorder={(movingId, beforeId) => {
-                  if (!trip?.id) return;
-                  const order = ideas
-                    .slice()
-                    .map((i) => i.id)
-                    .filter((id) => id !== movingId);
-                  const insertIndex = order.indexOf(beforeId);
-                  if (insertIndex === -1) {
-                    order.push(movingId);
-                  } else {
-                    order.splice(insertIndex, 0, movingId);
-                  }
+                    promoteIdeaModal.onOpen();
+                  }}
+                  onReorder={(movingId, beforeId) => {
+                    if (!trip?.id) return;
+                    const order = ideas
+                      .slice()
+                      .map((i) => i.id)
+                      .filter((id) => id !== movingId);
+                    const insertIndex = order.indexOf(beforeId);
+                    if (insertIndex === -1) {
+                      order.push(movingId);
+                    } else {
+                      order.splice(insertIndex, 0, movingId);
+                    }
                     reorderIdeas(trip.id, order)
                       .then((updated) => setIdeas(updated))
                       .catch((err) => toast({ status: 'error', title: 'Failed to reorder ideas', description: err.message }));
-                }}
-                onSaveAsPlace={handleSaveIdeaAsPlace}
-              />
-              }
+                  }}
+                  onSaveAsPlace={handleSaveIdeaAsPlace}
+                />
+              )}
             />
-            <Route path="*" element={<Box color="white">Not found</Box>} />
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Box>
       </Stack>

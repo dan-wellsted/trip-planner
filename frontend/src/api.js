@@ -4,13 +4,16 @@ const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 
 async function jsonFetch(path, options = {}) {
   const res = await fetch(`${API_URL}${path}`, {
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     ...options,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || res.statusText);
+    const err = new Error(text || res.statusText);
+    err.status = res.status;
+    throw err;
   }
   if (res.status === 204) return null;
   return res.json();
@@ -18,6 +21,22 @@ async function jsonFetch(path, options = {}) {
 
 export function fetchTrips() {
   return jsonFetch('/trips');
+}
+
+export function register(payload) {
+  return jsonFetch('/auth/register', { method: 'POST', body: payload });
+}
+
+export function login(payload) {
+  return jsonFetch('/auth/login', { method: 'POST', body: payload });
+}
+
+export function logout() {
+  return jsonFetch('/auth/logout', { method: 'POST' });
+}
+
+export function me() {
+  return jsonFetch('/auth/me');
 }
 
 export function createTrip(payload) {
@@ -66,6 +85,10 @@ export function createBooking(tripId, payload) {
 
 export function deleteBooking(bookingId) {
   return jsonFetch(`/bookings/${bookingId}`, { method: 'DELETE' });
+}
+
+export function addTripMember(tripId, payload) {
+  return jsonFetch(`/trips/${tripId}/memberships`, { method: 'POST', body: payload });
 }
 
 export function fetchIdeas(tripId) {

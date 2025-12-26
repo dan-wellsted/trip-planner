@@ -1,6 +1,6 @@
-# Japan Trip Companion
+# Trip Companion
 
-Lightweight Node + Prisma API with a React (Vite) frontend to plan and track a Japan trip. Built for quick itinerary glances, checklists, and shared moments.
+Lightweight Node + Prisma API with a React (Vite) frontend to plan and track a trip. Built for quick itinerary glances, checklists, and shared moments.
 
 ## Structure
 - `backend/`: Express API with Prisma + PostgreSQL (dev uses SQLite). Models for trips, days, activities, checklist, expenses, media, ideas, cities, and places.
@@ -69,6 +69,7 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - `PATCH /places/:id` – update place
 - `DELETE /places/:id` – remove place
 - `POST /places/:id/promote` – create an activity from a place `{ dayId, startTime?, location?, category? }`
+- Auth (WIP): `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` (JWT cookie-based, per-trip memberships coming online).
 
 ## Planning to-dos (future features)
 - Saved places library: **done** (list+map, search/sort/group, favorites, paste-from-link, promote to activity; next: clustering, drag-to-day, server favorites).
@@ -81,6 +82,7 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - Weather + local time: per-city weather, current local time, last-train cutoffs for key lines.
 - Checklists tied to days: pre-day todos and “next 24h” strip for reminders.
 - Sharing: read-only share links or invites; optional album link for Moments.
+- Authentication + multi-user: sign up/login, user-owned trips, session cookies or JWT, per-user data isolation, and invites/roles so multiple people can view/edit the same trip.
 - Smart reminders: push/email for flights/hotels/timed tickets; “leave by” alerts using transit times.
 - Offline-first: cache itinerary/PNRs/checklists for subway use.
 - Seed/import: CSV/ICS paste for flights/hotels to auto-create activities.
@@ -90,3 +92,14 @@ npm run dev          # runs backend dev + frontend dev in parallel
 - Lodging timeline: show all stays on a horizontal timeline to catch gaps/overlaps.
 - Nearby recs: suggest spots near bookings/activities and surfacing open-now options.
 - Driving/transit estimates: mode selection with time + cost estimates and “leave by” callouts.
+
+## Site structure (outline to refine)
+- Dashboard: hero + day timeline, checklist, spend, bookings, moments, quick auth status.
+- Calendar: grid of days with activities, add/edit modals.
+- Places: list + map with filters, paste link intake, promote to day.
+- Ideas: board with drag ordering, promote/save-as-place.
+- Cities: manager modal for trip stops.
+- Auth: inline login/register bar; invite members (owner/editor/viewer) to shared trips.
+
+- Unauthenticated: Landing page with login/sign-up only; no trip tools until signed in.
+- Authenticated: `/` shows “My trips” (list/create). `/trip/{id}` hosts the full planner (dashboard, calendar, places, ideas, day builder, etc.) for that trip.
